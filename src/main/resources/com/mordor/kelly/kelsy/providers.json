@@ -1,0 +1,6 @@
+[
+  {"id":"minimax",  "displayName":"MiniMax",         "baseUrl":"https://api.minimaxi.com/v1",          "defaultModelName":"MiniMax-M3"},
+  {"id":"kimi",     "displayName":"月之暗面 Kimi",    "baseUrl":"https://api.moonshot.cn/v1",            "defaultModelName":"kimi-k2.5"},
+  {"id":"glm",      "displayName":"智谱 GLM",        "baseUrl":"https://open.bigmodel.cn/api/paas/v4", "defaultModelName":"glm-4.7"},
+  {"id":"deepseek", "displayName":"DeepSeek",        "baseUrl":"https://api.deepseek.com",              "defaultModelName":"deepseek-chat"}
+]

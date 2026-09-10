@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <defs>
+    <!-- 浅蓝白渐变背景 -->
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f0f8ff;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#e6f3ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5f9ff;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 小雪花图案 -->
+    <g id="snowflake-small">
+      <path d="M10 0 L10 3 M10 17 L10 20 M0 10 L3 10 M17 10 L20 10 M2.5 2.5 L4.5 4.5 M15.5 15.5 L17.5 17.5 M2.5 17.5 L4.5 15.5 M15.5 4.5 L17.5 2.5" 
+            stroke="#c5d5e5" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <circle cx="10" cy="10" r="1.5" fill="#d0e0f0"/>
+    </g>
+    
+    <!-- 中等雪花 -->
+    <g id="snowflake-med">
+      <path d="M15 0 L15 5 M15 25 L15 30 M0 15 L5 15 M25 15 L30 15 M4 4 L8 8 M22 22 L26 26 M4 26 L8 22 M22 8 L26 4" 
+            stroke="#b0c8e0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <circle cx="15" cy="15" r="2" fill="#c5d8ec"/>
+      <circle cx="15" cy="5" r="1" fill="#d5e5f5"/>
+      <circle cx="15" cy="25" r="1" fill="#d5e5f5"/>
+      <circle cx="5" cy="15" r="1" fill="#d5e5f5"/>
+      <circle cx="25" cy="15" r="1" fill="#d5e5f5"/>
+    </g>
+    
+    <!-- 大雪花 -->
+    <g id="snowflake-large">
+      <path d="M20 0 L20 8 M20 32 L20 40 M0 20 L8 20 M32 20 L40 20 M5 5 L11 11 M29 29 L35 35 M5 35 L11 29 M29 11 L35 5" 
+            stroke="#9ab8d8" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M12 12 L16 16 M24 24 L28 28 M12 28 L16 24 M24 16 L28 12" 
+            stroke="#abc9e5" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <circle cx="20" cy="20" r="3" fill="#b8d4ed"/>
+      <circle cx="20" cy="8" r="1.5" fill="#c8e0f5"/>
+      <circle cx="20" cy="32" r="1.5" fill="#c8e0f5"/>
+      <circle cx="8" cy="20" r="1.5" fill="#c8e0f5"/>
+      <circle cx="32" cy="20" r="1.5" fill="#c8e0f5"/>
+    </g>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="800" height="800" fill="url(#bg-gradient)"/>
+  
+  <!-- 散落的雪花 - 随机分布 -->
+  <!-- 第一行 -->
+  <use href="#snowflake-small" x="50" y="50" opacity="0.6"/>
+  <use href="#snowflake-med" x="180" y="80" opacity="0.5"/>
+  <use href="#snowflake-small" x="320" y="40" opacity="0.7"/>
+  <use href="#snowflake-large" x="450" y="60" opacity="0.4"/>
+  <use href="#snowflake-small" x="600" y="90" opacity="0.6"/>
+  <use href="#snowflake-med" x="720" y="50" opacity="0.5"/>
+  
+  <!-- 第二行 -->
+  <use href="#snowflake-med" x="100" y="180" opacity="0.5"/>
+  <use href="#snowflake-small" x="250" y="150" opacity="0.7"/>
+  <use href="#snowflake-large" x="380" y="200" opacity="0.4"/>
+  <use href="#snowflake-small" x="520" y="170" opacity="0.6"/>
+  <use href="#snowflake-med" x="650" y="190" opacity="0.5"/>
+  
+  <!-- 第三行 -->
+  <use href="#snowflake-small" x="40" y="280" opacity="0.6"/>
+  <use href="#snowflake-large" x="200" y="300" opacity="0.35"/>
+  <use href="#snowflake-med" x="350" y="270" opacity="0.5"/>
+  <use href="#snowflake-small" x="480" y="320" opacity="0.7"/>
+  <use href="#snowflake-med" x="630" y="290" opacity="0.5"/>
+  <use href="#snowflake-small" x="750" y="310" opacity="0.6"/>
+  
+  <!-- 第四行 -->
+  <use href="#snowflake-med" x="120" y="400" opacity="0.5"/>
+  <use href="#snowflake-small" x="280" y="380" opacity="0.6"/>
+  <use href="#snowflake-large" x="420" y="420" opacity="0.4"/>
+  <use href="#snowflake-small" x="560" y="390" opacity="0.7"/>
+  <use href="#snowflake-med" x="700" y="410" opacity="0.5"/>
+  
+  <!-- 第五行 -->
+  <use href="#snowflake-small" x="60" y="500" opacity="0.7"/>
+  <use href="#snowflake-large" x="190" y="530" opacity="0.35"/>
+  <use href="#snowflake-med" x="340" y="510" opacity="0.5"/>
+  <use href="#snowflake-small" x="500" y="540" opacity="0.6"/>
+  <use href="#snowflake-med" x="640" y="520" opacity="0.5"/>
+  <use href="#snowflake-small" x="770" y="550" opacity="0.6"/>
+  
+  <!-- 第六行 -->
+  <use href="#snowflake-med" x="150" y="620" opacity="0.5"/>
+  <use href="#snowflake-small" x="300" y="600" opacity="0.6"/>
+  <use href="#snowflake-large" x="440" y="640" opacity="0.4"/>
+  <use href="#snowflake-small" x="580" y="610" opacity="0.7"/>
+  <use href="#snowflake-med" x="730" y="630" opacity="0.5"/>
+  
+  <!-- 第七行 -->
+  <use href="#snowflake-small" x="80" y="720" opacity="0.6"/>
+  <use href="#snowflake-med" x="220" y="750" opacity="0.5"/>
+  <use href="#snowflake-small" x="370" y="730" opacity="0.7"/>
+  <use href="#snowflake-large" x="510" y="760" opacity="0.35"/>
+  <use href="#snowflake-small" x="660" y="740" opacity="0.6"/>
+  <use href="#snowflake-med" x="790" y="770" opacity="0.5"/>
+  
+  <!-- 飘落的雪花点（小圆点） -->
+  <circle cx="45" cy="120" r="2" fill="#d0e0f0" opacity="0.4"/>
+  <circle cx="155" cy="250" r="1.5" fill="#d5e5f5" opacity="0.5"/>
+  <circle cx="295" cy="360" r="2" fill="#d0e0f0" opacity="0.4"/>
+  <circle cx="415" cy="140" r="1.5" fill="#d5e5f5" opacity="0.5"/>
+  <circle cx="555" cy="470" r="2" fill="#d0e0f0" opacity="0.4"/>
+  <circle cx="685" cy="350" r="1.5" fill="#d5e5f5" opacity="0.5"/>
+  <circle cx="95" cy="570" r="2" fill="#d0e0f0" opacity="0.4"/>
+  <circle cx="245" cy="690" r="1.5" fill="#d5e5f5" opacity="0.5"/>
+  <circle cx="375" cy="480" r="2" fill="#d0e0f0" opacity="0.4"/>
+  <circle cx="535" cy="680" r="1.5" fill="#d5e5f5" opacity="0.5"/>
+  <circle cx="745" cy="120" r="2" fill="#d0e0f0" opacity="0.4"/>
+  <circle cx="595" cy="240" r="1.5" fill="#d5e5f5" opacity="0.5"/>
+  
+  <!-- 额外的装饰性小雪花 -->
+  <use href="#snowflake-small" x="135" y="135" opacity="0.3"/>
+  <use href="#snowflake-small" x="485" y="285" opacity="0.3"/>
+  <use href="#snowflake-small" x="735" y="435" opacity="0.3"/>
+  <use href="#snowflake-small" x="335" y="585" opacity="0.3"/>
+  <use href="#snowflake-small" x="85" y="685" opacity="0.3"/>
+</svg>

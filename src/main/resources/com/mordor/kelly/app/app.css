@@ -1,0 +1,19 @@
+/* Color tokens consumed via lookup-color */
+.root {
+    -color-primary:       #1E6FFF;
+    -color-primary-soft:  #E8F4FF;
+    -color-peer-bubble:   #E8F4FF;
+    -color-bg-app:        #F5F8FF;
+    -color-text-primary:  #212121;
+    -color-text-secondary:#909399;
+    -color-system-bubble: #EFF6FF;
+    -color-border:        #E4E7ED;
+
+    -fx-font-family: "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -fx-base: #F5F8FF;
+}
+
+/* App background：浅蓝主调，和聊天背景雪花图呼应 */
+.app-bg {
+    -fx-background-color: #F5F8FF;
+}

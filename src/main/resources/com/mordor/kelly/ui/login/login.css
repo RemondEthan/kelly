@@ -1,0 +1,214 @@
+/* ========================================================================
+   LOGIN PANE — QQ 风格
+   ======================================================================== */
+
+/* 整张登录面板：QQ 风的浅蓝紫色背景 */
+.login-root {
+    -fx-background-color: linear-gradient(to bottom, #E8F0FE 0%, #F5F8FF 100%);
+}
+
+/* 顶部 banner：QQ 蓝渐变（左深 → 右浅） */
+.login-banner {
+    -fx-background-color: linear-gradient(to right, #1E6FFF 0%, #00C0FF 100%);
+    -fx-padding: 14 18 14 18;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 6, 0, 0, 2);
+}
+
+.login-banner-title {
+    -fx-text-fill: white;
+    -fx-font-size: 16px;
+    -fx-font-weight: 700;
+}
+
+.login-banner-status {
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-opacity: 0.92;
+}
+
+/* 表单卡片：白底圆角阴影 */
+.login-card {
+    -fx-background-color: white;
+    -fx-background-radius: 6 6 6 6;
+    -fx-border-radius: 6 6 6 6;
+    -fx-border-color: #E4E7ED;
+    -fx-border-width: 1 1 1 1;
+    -fx-padding: 18 22 18 22;
+    -fx-effect: dropshadow(gaussian, rgba(30, 111, 255, 0.10), 12, 0, 0, 2);
+}
+
+.login-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #1E6FFF;
+}
+
+.login-subtitle {
+    -fx-font-size: 10px;
+    -fx-text-fill: #909399;
+}
+
+.login-field-label {
+    -fx-font-size: 11px;
+    -fx-text-fill: #909399;
+}
+
+.login-avatar-slot {
+    -fx-alignment: center;
+    -fx-cursor: hand;
+}
+.login-root .avatar-fallback-self {
+    -fx-fill: #1E6FFF;
+}
+.login-root .avatar-fallback {
+    -fx-fill: #8BB6FF;
+}
+.login-root .avatar-initial,
+.login-root .avatar-placeholder {
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: 600;
+}
+
+/* 输入框：QQ 风的浅蓝边框，聚焦时变蓝 */
+.login-field {
+    -fx-font-size: 12px;
+    -fx-background-color: white;
+    -fx-border-color: #C0D3E8;
+    -fx-border-radius: 4 4 4 4;
+    -fx-background-radius: 4 4 4 4;
+    -fx-padding: 5 8 5 8;
+}
+
+.login-field:focused {
+    -fx-border-color: #1E6FFF;
+    -fx-effect: dropshadow(gaussian, rgba(30,111,255,0.18), 4, 0, 0, 0);
+}
+
+/* info 提示（蓝色，QQ 风格） */
+.login-info {
+    -fx-background-color: #E8F4FF;
+    -fx-text-fill: #1E6FFF;
+    -fx-background-radius: 4 4 4 4;
+    -fx-padding: 6 10 6 10;
+    -fx-font-size: 10px;
+}
+
+/* error 提示（红色） */
+.login-error {
+    -fx-background-color: #FFEBEE;
+    -fx-text-fill: #C62828;
+    -fx-background-radius: 4 4 4 4;
+    -fx-padding: 6 10 6 10;
+    -fx-font-size: 10px;
+}
+
+/* "登录"按钮：主题蓝 */
+.login-connect {
+    -fx-background-color: #1E6FFF;
+    -fx-text-fill: white;
+    -fx-background-radius: 4 4 4 4;
+    -fx-padding: 8 16 8 16;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-cursor: hand;
+}
+
+.login-connect:hover {
+    -fx-background-color: #3D82FF;
+}
+
+.login-connect:pressed {
+    -fx-background-color: #1554CC;
+}
+
+.login-connect:disabled {
+    -fx-opacity: 0.55;
+}
+
+/* 底部 footer */
+.login-footer {
+    -fx-padding: 8 18 8 18;
+}
+
+.login-footer-status {
+    -fx-font-size: 10px;
+    -fx-text-fill: #5BC85B;
+}
+
+.login-footer-version {
+    -fx-font-size: 10px;
+    -fx-text-fill: #909399;
+}
+
+.login-offline {
+    -fx-font-size: 12px;
+    -fx-text-fill: #5C6370;
+}
+
+.login-browse {
+    -fx-background-color: #EEF3FB;
+    -fx-text-fill: #1565C0;
+    -fx-background-radius: 4 4 4 4;
+    -fx-padding: 6 12 6 12;
+    -fx-font-size: 11px;
+    -fx-cursor: hand;
+}
+
+/* "接入大模型"次要按钮：白底、浅蓝边 */
+.login-model-config {
+    -fx-background-color: #F5F8FF;
+    -fx-text-fill: #1E6FFF;
+    -fx-border-color: #C0D3E8;
+    -fx-border-radius: 4 4 4 4;
+    -fx-background-radius: 4 4 4 4;
+    -fx-padding: 6 12 6 12;
+    -fx-font-size: 11px;
+    -fx-cursor: hand;
+    -fx-alignment: center;
+}
+
+.login-model-config:hover {
+    -fx-background-color: #E8F0FE;
+}
+
+.login-model-config:pressed {
+    -fx-background-color: #DCE7FA;
+}
+
+.login-model-config:disabled {
+    -fx-opacity: 0.55;
+}
+
+/* 密码可见切换控件 */
+.login-password-stack {
+    -fx-padding: 0 30 0 0; /* 给右侧 👁 按钮让位 */
+}
+
+/* 👁 按钮：透明、hover/pressed 浅灰底、focused 蓝边 */
+.login-eye-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #5C6370;
+    -fx-font-size: 13px;
+    -fx-padding: 0 4 0 4;
+    -fx-cursor: hand;
+    -fx-background-radius: 3;
+}
+
+.login-eye-button:hover {
+    -fx-background-color: #F2F6FA;
+}
+
+.login-eye-button:pressed {
+    -fx-background-color: #E4E7ED;
+}
+
+.login-eye-button:focused {
+    -fx-border-color: #1E6FFF;
+    -fx-border-width: 1;
+    -fx-border-radius: 3;
+}
+
+.login-eye-button:disabled {
+    -fx-opacity: 0.55;
+}

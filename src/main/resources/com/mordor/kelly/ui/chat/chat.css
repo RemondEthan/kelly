@@ -1,0 +1,393 @@
+/* ========================================================================
+   CHAT PANE
+   ======================================================================== */
+
+.chat-root,
+.chat-ui {
+    -fx-background-color: transparent;
+}
+
+/* Title bar：半透明，让整窗背景图透到顶部 */
+.header {
+    -fx-background-color: rgba(255, 255, 255, 0.38);
+    -fx-border-color: transparent transparent rgba(228, 231, 237, 0.65) transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.header-title {
+    -fx-font-size: 14px;
+    -fx-text-fill: #1565C0;
+    -fx-font-weight: bold;
+}
+
+.header-meta {
+    -fx-font-size: 9px;
+    -fx-text-fill: #909399;
+}
+
+/* 背景铺在 ChatPane 的 StackPane 底层，列表必须透明才能露出来 */
+.message-list {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+    -fx-control-inner-background: transparent;
+    -fx-padding: 0;
+}
+.message-list .viewport {
+    -fx-background-color: transparent;
+}
+.message-list > .viewport > * {
+    -fx-background-color: transparent;
+}
+.message-list .corner {
+    -fx-background-color: transparent;
+}
+.message-list .scroll-bar:vertical {
+    -fx-background-color: transparent;
+}
+.message-list-container {
+    -fx-background-color: transparent;
+}
+
+/* Message bubbles. background-radius order:
+   topLeft, topRight, bottomRight, bottomLeft. */
+.bubble-self {
+    -fx-background-color: #D6E6FF;
+    -fx-background-radius: 12 12 0 12;
+    -fx-padding: 6 10 6 10;
+    -fx-text-fill: #212121;
+    -fx-font-size: 11px;
+}
+.bubble-self .text {
+    -fx-fill: #212121;
+}
+
+.bubble-peer {
+    -fx-background-color: #E8F4FF;
+    -fx-background-radius: 12 12 12 0;
+    -fx-padding: 6 10 6 10;
+    -fx-text-fill: #212121;
+    -fx-font-size: 11px;
+}
+.bubble-peer .text {
+    -fx-fill: #212121;
+}
+
+.todo-reminder .label,
+.todo-reminder .text {
+    -fx-text-fill: #1A2A3A;
+    -fx-fill: #1A2A3A;
+}
+.todo-reminder-item {
+    -fx-background-color: #9FC4E8;
+    -fx-background-radius: 8;
+    -fx-padding: 6 8 6 8;
+    -fx-text-fill: #1A2A3A;
+}
+.todo-reminder-item .label,
+.todo-reminder-item .text {
+    -fx-text-fill: #1A2A3A;
+    -fx-fill: #1A2A3A;
+}
+.todo-reminder-item .hyperlink {
+    -fx-text-fill: #0D47A1;
+}
+.todo-reminder-due {
+    -fx-font-size: 10px;
+    -fx-text-fill: #3D4F66;
+}
+.todo-reminder-due .text {
+    -fx-fill: #3D4F66;
+    -fx-font-size: 10px;
+}
+
+.bubble-system {
+    -fx-background-color: #EFF6FF;
+    -fx-background-radius: 8 8 8 8;
+    -fx-padding: 4 10 4 10;
+    -fx-text-fill: #909399;
+    -fx-font-size: 10px;
+    -fx-alignment: center;
+}
+.bubble-system .text {
+    -fx-fill: #909399;
+}
+
+.bubble-name {
+    -fx-font-size: 9px;
+    -fx-text-fill: #5C6370;
+    -fx-wrap-text: false;
+}
+
+.avatar-view {
+    -fx-alignment: center;
+}
+.avatar-fallback {
+    -fx-fill: #8BB6FF;
+}
+.avatar-fallback-self {
+    -fx-fill: #1E6FFF;
+}
+.avatar-initial {
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: 600;
+}
+.avatar-placeholder {
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: 600;
+}
+
+.bubble-time {
+    -fx-font-size: 8px;
+    -fx-text-fill: #B4BCCC;
+}
+
+/* 左侧成员列表 */
+.member-list {
+    -fx-background-color: rgba(255, 255, 255, 0.48);
+    -fx-border-color: transparent rgba(228, 231, 237, 0.7) transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+.member-list-heading {
+    -fx-alignment: center-left;
+}
+.member-list-title {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1565C0;
+}
+.member-list-toggle {
+    -fx-icon-color: #1565C0;
+    -fx-icon-size: 16px;
+}
+.member-list-collapsed {
+    -fx-padding: 10 6 10 6;
+}
+.member-list-count {
+    -fx-font-size: 10px;
+    -fx-text-fill: #909399;
+}
+.member-list-scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+    -fx-padding: 8 0 0 0;
+}
+.member-list-scroll .viewport {
+    -fx-background-color: transparent;
+}
+.member-row {
+    -fx-padding: 2 2 4 2;
+}
+.member-name {
+    -fx-font-size: 11px;
+    -fx-text-fill: #5C6370;
+    -fx-wrap-text: false;
+}
+.member-list-add-kelsy, .member-list-remove-kelsy {
+    -fx-font-size: 10px;
+    -fx-padding: 1 4 1 4;
+    -fx-background-color: transparent;
+    -fx-text-fill: #1565C0;
+    -fx-cursor: hand;
+    -fx-border-color: #90CAF9;
+    -fx-border-radius: 3;
+    -fx-background-radius: 3;
+    -fx-min-width: 0;
+}
+.member-list-add-kelsy:hover, .member-list-remove-kelsy:hover {
+    -fx-background-color: #E8F4FF;
+}
+
+/* Input bar */
+.input-bar {
+    -fx-background-color: rgba(255, 255, 255, 0.72);
+    -fx-border-color: rgba(228, 231, 237, 0.75) transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 8 10 8 10;
+}
+
+.input-bar .button {
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+}
+
+.input-bar .button:hover {
+    -fx-background-color: #E8F4FF;
+}
+
+.input-bar .button:disabled {
+    -fx-opacity: 0.4;
+}
+
+.input-bar .text-field {
+    -fx-background-radius: 16 16 16 16;
+    -fx-background-color: #F2F6FA;
+    -fx-padding: 4 8 4 8;
+    -fx-font-size: 11px;
+}
+
+.input-bar .send-active {
+    -fx-text-fill: #1E6FFF;
+}
+
+.header-button {
+    -fx-background-color: #EEF3FB;
+    -fx-text-fill: #1565C0;
+    -fx-background-radius: 10;
+    -fx-font-size: 11px;
+    -fx-padding: 3 8 3 8;
+    -fx-cursor: hand;
+}
+
+.md-view {
+    -fx-min-width: 0;
+}
+.md-view .text {
+    -fx-fill: #212121;
+}
+.md-h1, .md-h2, .md-h3 {
+    -fx-text-fill: #212121;
+}
+.md-h1 { -fx-font-size: 16px; -fx-font-weight: bold; }
+.md-h2 { -fx-font-size: 14px; -fx-font-weight: bold; }
+.md-h3 { -fx-font-size: 13px; -fx-font-weight: bold; }
+.md-code {
+    -fx-font-family: monospace;
+    -fx-background-color: #F4F4F5;
+    -fx-text-fill: #212121;
+    -fx-padding: 6;
+}
+.md-code .text {
+    -fx-fill: #212121;
+    -fx-font-family: "Menlo", "Consolas", monospace;
+}
+.md-inline-code {
+    -fx-font-family: monospace;
+    -fx-fill: #212121;
+}
+.md-quote {
+    -fx-border-color: #D0D7E2;
+    -fx-border-width: 0 0 0 3;
+    -fx-padding: 0 0 0 8;
+}
+.tool-card {
+    -fx-background-color: #F4F4F5;
+    -fx-padding: 4 8 4 8;
+    -fx-background-radius: 8;
+    -fx-border-color: #D4D4D8;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-font-size: 11px;
+}
+.tool-card-label {
+    -fx-text-fill: #3F3F46;
+    -fx-font-size: 11px;
+}
+.tool-card .hyperlink {
+    -fx-text-fill: #1565C0;
+    -fx-font-size: 11px;
+}
+.knowledge-pane {
+    -fx-background-color: #FFFFFF;
+}
+.knowledge-sources {
+    -fx-padding: 8 8 4 8;
+}
+
+.knowledge-source {
+    -fx-font-size: 11px;
+    -fx-text-fill: #1565C0;
+}
+
+.knowledge-source-active {
+    -fx-font-weight: bold;
+    -fx-text-fill: #0D47A1;
+}
+.knowledge-host {
+    -fx-background-color: #FFFFFF;
+    -fx-background: #FFFFFF;
+    -fx-min-height: 0;
+    -fx-pref-height: 1;
+}
+.knowledge-host > .viewport {
+    -fx-background-color: #FFFFFF;
+}
+
+.thinking-block {
+    -fx-background-color: #F4F4F5;
+    -fx-background-radius: 8;
+    -fx-padding: 8 10 8 10;
+    -fx-border-color: #D4D4D8;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.thinking-title {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #52525B;
+}
+
+.thinking-body {
+    -fx-font-size: 11px;
+    -fx-text-fill: #3F3F46;
+}
+
+.tree-cell {
+    -fx-text-fill: #212121;
+}
+.tree-cell:filled:selected,
+.tree-cell:filled:selected:focused {
+    -fx-background-color: #E4E4E7;
+    -fx-text-fill: #212121;
+}
+
+.mention-popup {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #E4E7ED;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 8, 0, 0, 2);
+    -fx-padding: 4 0 4 0;
+}
+
+.mention-row {
+    -fx-padding: 6 10 6 10;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.mention-row-active {
+    -fx-background-color: #F2F6FA;
+}
+
+.mention-name {
+    -fx-font-size: 12px;
+    -fx-text-fill: #1F2329;
+}
+
+/* 选区色必须写在 Text 上，TextFlow 吃不到 -fx-selection-fill */
+.selectable-text-flow .text {
+    -fx-selection-fill: #90CAF9;
+}
+
+/* Markdown 链接：视觉模拟原 Hyperlink 样式（蓝色 + 下划线） */
+.selectable-text-flow .md-link {
+    -fx-fill: #1565C0;
+    -fx-underline: true;
+    -fx-cursor: hand;
+}
+
+/* Markdown 行内 code：等宽 + 灰底 */
+.selectable-text-flow .md-inline-code {
+    -fx-font-family: "Menlo", "Consolas", monospace;
+    -fx-background-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Markdown 加粗（Task 5 bold 修复引入的 style class） */
+.selectable-text-flow .md-bold {
+    -fx-font-weight: bold;
+}
+
+.bubble-text-selectable .text {
+    -fx-selection-fill: #90CAF9;
+}
