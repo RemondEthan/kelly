@@ -15,7 +15,7 @@ import javafx.stage.Stage;
 public class Kelly extends Application {
 
     private static final double WIDTH = 720;
-    private static final double HEIGHT = 449;
+    private static final double HEIGHT = 520;
 
     private Stage stage;
     private StackPane root;

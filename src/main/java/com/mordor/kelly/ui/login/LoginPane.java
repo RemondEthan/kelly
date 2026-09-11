@@ -195,10 +195,10 @@ public class LoginPane extends VBox {
         ImageView view = new ImageView();
         var url = LoginPane.class.getResource("/icons/kelly.png");
         if (url != null) {
-            view.setImage(new Image(url.toExternalForm(), 64, 64, true, true));
+            view.setImage(new Image(url.toExternalForm(), 96, 96, true, true));
         }
-        view.setFitWidth(64);
-        view.setFitHeight(64);
+        view.setFitWidth(96);
+        view.setFitHeight(96);
         view.setPreserveRatio(true);
         view.setSmooth(true);
         return view;

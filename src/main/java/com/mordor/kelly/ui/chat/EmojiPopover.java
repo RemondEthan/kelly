@@ -1,5 +1,7 @@
 package com.mordor.kelly.ui.chat;
 
+import java.util.List;
+
 import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -53,8 +55,9 @@ public class EmojiPopover {
                 "-fx-border-radius: 4; " +
                 "-fx-background-radius: 4;");
 
-        for (int i = 0; i < EmojiImages.CATALOG.length; i++) {
-            String emoji = EmojiImages.CATALOG[i];
+        List<String> emojis = EmojiImages.getSupportedEmojis();
+        for (int i = 0; i < emojis.size(); i++) {
+            String emoji = emojis.get(i);
             Button b = new Button();
             b.setGraphic(EmojiImages.view(emoji, 18));
             b.setStyle("-fx-background-color: transparent; " +
