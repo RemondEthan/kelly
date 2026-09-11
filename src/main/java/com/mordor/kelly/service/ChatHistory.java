@@ -1,6 +1,6 @@
 package com.mordor.kelly.service;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.model.Message;
 
 import java.io.IOException;
@@ -86,15 +86,15 @@ public final class ChatHistory {
                 rewriteHeader(lines);
             }
             if (!unlocked) {
-                Diag.warn("history", "unlock failed file=%s", file);
+                Diagnostics.warn("history", "unlock failed file=%s", file);
             }
             return unlocked;
         } catch (CryptoService.CryptoException e) {
-            Diag.warn("history", "unlock failed file=%s: %s", file, e.getMessage());
+            Diagnostics.warn("history", "unlock failed file=%s: %s", file, e.getMessage());
             unlocked = false;
             return false;
         } catch (IOException e) {
-            Diag.warn("history", "open failed: %s", e.getMessage());
+            Diagnostics.warn("history", "open failed: %s", e.getMessage());
             unlocked = false;
             return false;
         }
@@ -117,7 +117,7 @@ public final class ChatHistory {
                     StandardOpenOption.APPEND);
             trimIfNeeded();
         } catch (IOException | CryptoService.CryptoException e) {
-            Diag.warn("history", "append failed: %s", e.getMessage());
+            Diagnostics.warn("history", "append failed: %s", e.getMessage());
         }
     }
 
@@ -203,7 +203,7 @@ public final class ChatHistory {
             Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
             restrictOwnerOnly(file);
         } catch (CryptoService.CryptoException e) {
-            Diag.warn("history", "header migrate failed: %s", e.getMessage());
+            Diagnostics.warn("history", "header migrate failed: %s", e.getMessage());
         }
     }
 
@@ -223,7 +223,7 @@ public final class ChatHistory {
                 }
             }
         } catch (IOException e) {
-            Diag.warn("history", "read failed: %s", e.getMessage());
+            Diagnostics.warn("history", "read failed: %s", e.getMessage());
         }
         return out;
     }

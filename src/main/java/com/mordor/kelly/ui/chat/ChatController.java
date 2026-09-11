@@ -1,6 +1,6 @@
 package com.mordor.kelly.ui.chat;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.KelsyPaths;
 import com.mordor.kelly.kelsy.KelsyRoomSettings;
 import com.mordor.kelly.kelsy.KelsyRuntime;
@@ -123,12 +123,12 @@ public class ChatController {
             this.imCode = state.client().imCode();
             this.peerSender = state.client()::sendChat;
             state.client().addListener(event -> {
-                Diag.log("chat", "queue %s fx=%s", eventName(event), Platform.isFxApplicationThread());
+                Diagnostics.log("chat", "queue %s fx=%s", eventName(event), Platform.isFxApplicationThread());
                 Platform.runLater(() -> {
                     long t0 = System.nanoTime();
                     onEvent(event);
-                    Diag.log("chat", "apply %s %dms peers=%s",
-                            eventName(event), Diag.elapsedMs(t0), peers.values());
+                    Diagnostics.log("chat", "apply %s %dms peers=%s",
+                            eventName(event), Diagnostics.elapsedMs(t0), peers.values());
                 });
             });
             peers.putAll(state.client().roster());
@@ -144,7 +144,7 @@ public class ChatController {
             }
         }
         refreshPeers();
-        Diag.log("chat", "controller ready roster=%s header=%s offline=%s",
+        Diagnostics.log("chat", "controller ready roster=%s header=%s offline=%s",
                 peers.values(), state.peerDisplayProperty().get(), state.offline());
         history.loadInitialAsync(loaded -> Platform.runLater(() -> onHistoryLoaded(loaded)));
     }
@@ -467,7 +467,7 @@ public class ChatController {
                     citations.addRetrievalText(reply.content());
                     addLocalEvidence(outgoing);
                     boolean retrieved = citations.commitIfRetrieved();
-                    Diag.warn("cite", "retrieved=%s shown=%s outgoing=%s",
+                    Diagnostics.warn("cite", "retrieved=%s shown=%s outgoing=%s",
                             retrieved, citations.shown(), outgoing);
                     if (retrieved) {
                         knowledgeVisible.set(true);
@@ -703,13 +703,13 @@ public class ChatController {
         followingLatest = true;
         noMoreOlder = false;
         if (!ScrollFollowPolicy.shouldReloadFromDisk(loadedOlder)) {
-            Diag.log("chat", "followLatest resume without setAll (no older page loaded)");
+            Diagnostics.log("chat", "followLatest resume without setAll (no older page loaded)");
             return;
         }
         loadedOlder = false;
         history.loadNewestAsync(ChatHistory.MEMORY_CAP, newest -> Platform.runLater(() -> {
             if (newest.isEmpty() && !messages.isEmpty()) {
-                Diag.warn("chat", "followLatest skipped empty disk over %d live msgs", messages.size());
+                Diagnostics.warn("chat", "followLatest skipped empty disk over %d live msgs", messages.size());
                 return;
             }
             messages.setAll(newest);
@@ -752,9 +752,9 @@ public class ChatController {
                 Optional<Image> img = AvatarService.fromPngBytes(png);
                 if (img.isPresent()) {
                     peerAvatars.put(userId, img.get());
-                    Diag.log("chat", "peer avatar userId=%d user=%s", userId, username);
+                    Diagnostics.log("chat", "peer avatar userId=%d user=%s", userId, username);
                 } else {
-                    Diag.warn("chat", "peer avatar decode failed userId=%d user=%s bytes=%d",
+                    Diagnostics.warn("chat", "peer avatar decode failed userId=%d user=%s bytes=%d",
                             userId, username, png == null ? 0 : png.length);
                 }
             }
@@ -842,7 +842,7 @@ public class ChatController {
                 addSystem("已与 " + String.join(", ", peers.values()) + " 连接");
             }
         }
-        Diag.log("chat", "history loaded n=%d unlocked=%s", loaded.size(), history.isUnlocked());
+        Diagnostics.log("chat", "history loaded n=%d unlocked=%s", loaded.size(), history.isUnlocked());
     }
 
     private void addMessage(Message message) {

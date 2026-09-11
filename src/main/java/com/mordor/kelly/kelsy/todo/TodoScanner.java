@@ -1,6 +1,6 @@
 package com.mordor.kelly.kelsy.todo;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,7 +30,7 @@ public final class TodoScanner {
                     .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".md"))
                     .forEach(p -> add(knowledgeRoot, p, out));
         } catch (IOException e) {
-            Diag.warn("todo", "无法扫描待办目录: %s", e.getMessage());
+            Diagnostics.warn("todo", "无法扫描待办目录: %s", e.getMessage());
         }
         return List.copyOf(out);
     }
@@ -40,12 +40,12 @@ public final class TodoScanner {
         try {
             Optional<TodoCard> card = TodoCardParser.parse(Files.readString(file), rel);
             if (card.isEmpty()) {
-                Diag.warn("todo", "跳过无法解析的待办: %s", rel);
+                Diagnostics.warn("todo", "跳过无法解析的待办: %s", rel);
                 return;
             }
             out.add(card.get());
         } catch (IOException e) {
-            Diag.warn("todo", "读取待办失败 %s: %s", rel, e.getMessage());
+            Diagnostics.warn("todo", "读取待办失败 %s: %s", rel, e.getMessage());
         }
     }
 }

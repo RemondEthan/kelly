@@ -1,6 +1,6 @@
 package com.mordor.kelly.ui.login;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.config.KelsyConfig;
 import com.mordor.kelly.model.AppState;
 import com.mordor.kelly.service.AvatarService;
@@ -13,7 +13,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
-import javafx.scene.control.Control;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
@@ -303,22 +302,22 @@ public class LoginPane extends VBox {
         ImClient client = new ImClient();
         AvatarService.thumbnailBase64(avatarPath).ifPresent(client::setAvatarPlaintext);
         int port = Integer.parseInt(input.port());
-        Diag.log("login", "connect click user=%s host=%s:%s", input.username(), input.ip(), input.port());
+        Diagnostics.log("login", "connect click user=%s host=%s:%s", input.username(), input.ip(), input.port());
         client.connect(input.ip(), port, input.imCode(), input.password(), input.username())
                 .thenRun(() -> {
-                    Diag.log("login", "handshake ok, queue enter-chat");
+                    Diagnostics.log("login", "handshake ok, queue enter-chat");
                     Platform.runLater(() -> {
                         long t0 = System.nanoTime();
-                        Diag.log("login", "enter chat begin");
+                        Diagnostics.log("login", "enter chat begin");
                         onConnect.accept(new AppState(
                                 input.username(),
                                 client,
                                 AvatarService.load(avatarPath).orElse(null)));
-                        Diag.log("login", "enter chat done %dms", Diag.elapsedMs(t0));
+                        Diagnostics.log("login", "enter chat done %dms", Diagnostics.elapsedMs(t0));
                     });
                 })
                 .exceptionally(ex -> {
-                    Diag.error("login", "handshake failed: %s", connectErrorMessage(ex));
+                    Diagnostics.error("login", "handshake failed: %s", connectErrorMessage(ex));
                     Platform.runLater(() -> {
                         client.close();
                         offline.setDisable(false);

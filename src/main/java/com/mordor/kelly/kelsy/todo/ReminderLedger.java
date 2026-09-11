@@ -1,6 +1,6 @@
 package com.mordor.kelly.kelsy.todo;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -84,7 +84,7 @@ public final class ReminderLedger {
             }
             Files.writeString(file, sb.toString());
         } catch (IOException e) {
-            Diag.warn("todo", "无法写入提醒账本: %s", e.getMessage());
+            Diagnostics.warn("todo", "无法写入提醒账本: %s", e.getMessage());
         }
     }
 }

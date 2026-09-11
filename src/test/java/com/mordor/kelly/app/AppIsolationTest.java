@@ -1,6 +1,6 @@
 package com.mordor.kelly.app;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.KelsyPaths;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +33,7 @@ class AppIsolationTest {
 
     @Test
     void diagLogIsKelly() {
-        assertEquals("kelly.log", Diag.logFile().getFileName().toString());
+        assertEquals("kelly.log", Diagnostics.logFile().getFileName().toString());
     }
 
     @Test

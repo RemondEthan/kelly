@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 诊断日志：默认只写 WARN / ERROR。调试轨迹用 {@link #log}，需 {@code -Dkelly.debug=true} 才输出。
  * macOS: ~/Library/Logs/kelly.log
  */
-public final class Diag {
+public final class Diagnostics {
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
             .withZone(ZoneId.systemDefault());
@@ -32,7 +32,7 @@ public final class Diag {
     private static final boolean DEBUG = Boolean.getBoolean("kelly.debug");
     private static volatile long lastThreadDumpNanos;
 
-    private Diag() {}
+    private Diagnostics() {}
 
     public static Path logFile() {
         return LOG_FILE;
@@ -89,7 +89,7 @@ public final class Diag {
             t.setDaemon(true);
             return t;
         });
-        exec.scheduleAtFixedRate(Diag::pingFx, 1, 2, TimeUnit.SECONDS);
+        exec.scheduleAtFixedRate(Diagnostics::pingFx, 1, 2, TimeUnit.SECONDS);
     }
 
     private static void pingFx() {
