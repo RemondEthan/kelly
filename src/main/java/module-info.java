@@ -23,6 +23,9 @@ module com.mordor.kelly {
     requires eu.hansolo.tilesfx;
     requires com.almasb.fxgl.all;
 
+    requires com.sun.jna;
+    requires com.sun.jna.platform;
+
     exports com.mordor.kelly.app;
     exports com.mordor.kelly.ui.login;
     exports com.mordor.kelly.ui.chat;

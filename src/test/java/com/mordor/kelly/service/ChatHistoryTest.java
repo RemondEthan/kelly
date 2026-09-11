@@ -97,6 +97,25 @@ class ChatHistoryTest {
     }
 
     @Test
+    void legacyHistoryHeaderStillLoadsAndRewrites() throws Exception {
+        Path file = tmp.resolve("messages.log");
+        CryptoService crypto = CryptoService.forArchive("secret", "ROOM");
+        Message kept = msg("a", "keep-me", LocalDateTime.of(2026, 1, 1, 0, 0));
+        Files.writeString(file,
+                crypto.encrypt("legacy-history-v1") + System.lineSeparator()
+                        + crypto.encrypt(HistoryCodec.encode(kept)) + System.lineSeparator(),
+                StandardCharsets.UTF_8);
+
+        ChatHistory history = new ChatHistory(file, crypto);
+        assertTrue(history.open());
+        assertEquals(List.of("a"), ids(history.loadNewest(100)));
+
+        String newHeader = crypto.decrypt(Files.readAllLines(file).get(0).trim());
+        assertEquals("kelly-history-v1", newHeader);
+        history.close();
+    }
+
+    @Test
     void differentImCodesUseDifferentDirectories() {
         Path a = ChatHistory.defaultFile(tmp, "OFFICE");
         Path b = ChatHistory.defaultFile(tmp, "FAMILY");

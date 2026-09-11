@@ -549,6 +549,11 @@ public class ChatController {
         });
     }
 
+    public void close() {
+        stopReminders();
+        history.close();
+    }
+
     public void stopReminders() {
         if (reminderTick != null) {
             reminderTick.cancel(false);

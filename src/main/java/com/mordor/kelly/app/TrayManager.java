@@ -4,6 +4,7 @@ import javafx.stage.Stage;
 
 import javax.imageio.ImageIO;
 import java.awt.AWTException;
+import java.awt.Dimension;
 import java.awt.Image;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
@@ -18,7 +19,8 @@ import java.io.InputStream;
  * install(Stage) 立即返回占位对象，真正的 SystemTray.add 在 AWT 线程完成；
  * 系统不支持托盘或加载失败时,tray() / icon() 返回 null,QuitManager 据此跳过清理。
  *
- * 图标路径固定为 /icons/tray.png(平台资源,不挂特性)。
+ * 图标与窗口共用 /icons/kelly.png；提醒态用 /icons/kelly-alert.png。
+ * Windows / Debian 托盘尺寸不同，加载后按 SystemTray.getTrayIconSize() 缩放。
  */
 public final class TrayManager {
 
@@ -39,14 +41,16 @@ public final class TrayManager {
             System.out.println("[Tray] 当前系统不支持托盘图标,跳过");
             return;
         }
-        Image image = loadTrayImage("/icons/tray.png");
-        if (image == null) {
+        Image loaded = loadTrayImage("/icons/kelly.png");
+        if (loaded == null) {
             return;
         }
-        Image alert = loadTrayImage("/icons/tray-alert.png");
 
         try {
             SystemTray systemTray = SystemTray.getSystemTray();
+            Dimension size = systemTray.getTrayIconSize();
+            Image image = AppIcons.fitAwt(loaded, size.width, size.height);
+            Image alert = AppIcons.fitAwt(loadTrayImage("/icons/kelly-alert.png"), size.width, size.height);
             TrayIcon trayIcon = new TrayIcon(image, "Kelly");
             trayIcon.setImageAutoSize(true);
             trayIcon.addActionListener(e -> FxStageSupport.show(stage));
@@ -80,7 +84,8 @@ public final class TrayManager {
     void setIconImage(java.awt.Image image) {
         AwtSupport.run(() -> {
             if (icon != null && image != null) {
-                icon.setImage(image);
+                Dimension size = tray != null ? tray.getTrayIconSize() : new Dimension(16, 16);
+                icon.setImage(AppIcons.fitAwt(image, size.width, size.height));
             }
         });
     }

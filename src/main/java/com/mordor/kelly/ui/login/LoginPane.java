@@ -17,6 +17,8 @@ import javafx.scene.control.Control;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -130,7 +132,11 @@ public class LoginPane extends VBox {
         VBox.setVgrow(cardTop, Priority.ALWAYS);
         VBox.setVgrow(cardBottom, Priority.ALWAYS);
 
-        VBox card = new VBox(10, cardTop, fields, offline, modelConfig, connect, cardBottom);
+        HBox logoRow = new HBox(appLogo());
+        logoRow.setAlignment(Pos.CENTER);
+        logoRow.getStyleClass().add("login-logo-row");
+
+        VBox card = new VBox(10, cardTop, logoRow, fields, offline, modelConfig, connect, cardBottom);
         card.getStyleClass().add("login-card");
         card.setMaxWidth(Double.MAX_VALUE);
         card.setMaxHeight(Double.MAX_VALUE);
@@ -183,6 +189,19 @@ public class LoginPane extends VBox {
                 ? "脱机只和本机秘书对话，不会连接服务器"
                 : "请与对方约定相同的 IM_CODE 和初始口令进行配对");
         connect.setText(on ? "进 入" : "连 接");
+    }
+
+    private static ImageView appLogo() {
+        ImageView view = new ImageView();
+        var url = LoginPane.class.getResource("/icons/kelly.png");
+        if (url != null) {
+            view.setImage(new Image(url.toExternalForm(), 64, 64, true, true));
+        }
+        view.setFitWidth(64);
+        view.setFitHeight(64);
+        view.setPreserveRatio(true);
+        view.setSmooth(true);
+        return view;
     }
 
     private StackPane avatarPicker() {

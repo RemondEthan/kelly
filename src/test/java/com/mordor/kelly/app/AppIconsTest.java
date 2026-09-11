@@ -21,10 +21,22 @@ class AppIconsTest {
 
     @Test
     void stageIconSizesCoverTaskbar() {
-        assertEquals(4, AppIcons.STAGE_SIZES.length);
+        assertEquals(5, AppIcons.STAGE_SIZES.length);
         assertEquals(16, AppIcons.STAGE_SIZES[0]);
-        assertEquals(32, AppIcons.STAGE_SIZES[1]);
+        assertEquals(24, AppIcons.STAGE_SIZES[1]);
+        assertEquals(32, AppIcons.STAGE_SIZES[2]);
         assertFalse(java.util.Arrays.stream(AppIcons.STAGE_SIZES).noneMatch(s -> s == 32));
+        assertFalse(java.util.Arrays.stream(AppIcons.STAGE_SIZES).noneMatch(s -> s == 24));
+    }
+
+    @Test
+    void fitAwtScalesToTraySizedSquare() {
+        java.awt.Image src = AppIcons.awtImage("/icons/kelly.png");
+        assertNotNull(src);
+        java.awt.Image fitted = AppIcons.fitAwt(src, 16, 16);
+        assertNotNull(fitted);
+        assertEquals(16, fitted.getWidth(null));
+        assertEquals(16, fitted.getHeight(null));
     }
 
     @Test

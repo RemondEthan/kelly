@@ -60,7 +60,7 @@ public class ChatPane extends StackPane {
     }
 
     public void close() {
-        controller.stopReminders();
+        controller.close();
     }
 
     private static Region wallpaper() {
