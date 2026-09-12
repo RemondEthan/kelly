@@ -493,12 +493,20 @@ public class ChatController {
     }
 
     private void persistAssistant(String content) {
-        addMessage(new Message(
+        Message message = new Message(
                 UUID.randomUUID().toString(),
                 Sender.ASSISTANT,
                 content == null ? "" : content,
                 LocalDateTime.now(),
-                settings.nickname(imCode)));
+                settings.nickname(imCode));
+        history.appendAsync(message);
+        if (!historyReady) {
+            liveDuringLoad.add(message);
+        }
+        // 助手回复始终显示在聊天中，不受 followingLatest 影响
+        // MessageListView 会根据 followingLatest 决定是否自动滚动到底部
+        messages.add(message);
+        evictFromHead();
     }
 
     void setAsking(boolean asking) {
