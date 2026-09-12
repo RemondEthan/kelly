@@ -1,6 +1,6 @@
 package com.mordor.kelly.service;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.model.Message;
 
 import java.io.IOException;
@@ -81,13 +81,20 @@ public final class ChatHistory {
                 return true;
             }
             String header = crypto.decrypt(lines.get(0).trim());
-            unlocked = HEADER.equals(header);
+            unlocked = isHistoryHeader(header);
+            if (unlocked && !HEADER.equals(header)) {
+                rewriteHeader(lines);
+            }
+            if (!unlocked) {
+                Diagnostics.warn("history", "unlock failed file=%s", file);
+            }
             return unlocked;
         } catch (CryptoService.CryptoException e) {
+            Diagnostics.warn("history", "unlock failed file=%s: %s", file, e.getMessage());
             unlocked = false;
             return false;
         } catch (IOException e) {
-            Diag.warn("history", "open failed: %s", e.getMessage());
+            Diagnostics.warn("history", "open failed: %s", e.getMessage());
             unlocked = false;
             return false;
         }
@@ -110,7 +117,7 @@ public final class ChatHistory {
                     StandardOpenOption.APPEND);
             trimIfNeeded();
         } catch (IOException | CryptoService.CryptoException e) {
-            Diag.warn("history", "append failed: %s", e.getMessage());
+            Diagnostics.warn("history", "append failed: %s", e.getMessage());
         }
     }
 
@@ -172,7 +179,32 @@ public final class ChatHistory {
     }
 
     public void close() {
+        try {
+            flush(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException ignored) {
+            // 退出路径：尽量刷盘，失败也要关掉执行器
+        }
         exec.shutdown();
+    }
+
+    static boolean isHistoryHeader(String header) {
+        return header != null && header.endsWith("-history-v1");
+    }
+
+    private void rewriteHeader(List<String> lines) throws IOException {
+        try {
+            lines.set(0, crypto.encrypt(HEADER));
+            StringBuilder sb = new StringBuilder();
+            for (String line : lines) {
+                sb.append(line).append(System.lineSeparator());
+            }
+            Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
+            restrictOwnerOnly(file);
+        } catch (CryptoService.CryptoException e) {
+            Diagnostics.warn("history", "header migrate failed: %s", e.getMessage());
+        }
     }
 
     private List<Message> readMessages() {
@@ -191,7 +223,7 @@ public final class ChatHistory {
                 }
             }
         } catch (IOException e) {
-            Diag.warn("history", "read failed: %s", e.getMessage());
+            Diagnostics.warn("history", "read failed: %s", e.getMessage());
         }
         return out;
     }

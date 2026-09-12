@@ -1,6 +1,6 @@
 package com.mordor.kelly.ui.chat;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.service.KnowledgeStore;
 import com.mordor.kelly.kelsy.todo.TodoReminderService;
 import com.mordor.kelly.kelsy.ui.knowledge.KnowledgePane;
@@ -34,7 +34,7 @@ public class ChatPane extends StackPane {
         setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
 
         controller = new ChatController(state);
-        Diag.log("ui", "controller %dms", Diag.elapsedMs(t0));
+        Diagnostics.log("ui", "controller %dms", Diagnostics.elapsedMs(t0));
 
         ui = new BorderPane();
         ui.getStyleClass().add("chat-ui");
@@ -56,11 +56,11 @@ public class ChatPane extends StackPane {
         controller.knowledgeVisibleProperty().addListener((obs, o, n) -> applyCenter());
 
         getChildren().addAll(wallpaper(), ui);
-        Diag.log("ui", "ChatPane constructed %dms", Diag.elapsedMs(t0));
+        Diagnostics.log("ui", "ChatPane constructed %dms", Diagnostics.elapsedMs(t0));
     }
 
     public void close() {
-        controller.stopReminders();
+        controller.close();
     }
 
     private static Region wallpaper() {
@@ -69,10 +69,10 @@ public class ChatPane extends StackPane {
         wallpaper.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
         long t0 = System.nanoTime();
         Image img = new Image(ChatPane.class.getResource("bg-chat.png").toExternalForm());
-        Diag.log("ui", "bg-chat.png loaded %dms error=%s w=%.0f",
-                Diag.elapsedMs(t0), img.isError(), img.getWidth());
+        Diagnostics.log("ui", "bg-chat.png loaded %dms error=%s w=%.0f",
+                Diagnostics.elapsedMs(t0), img.isError(), img.getWidth());
         if (img.isError()) {
-            Diag.warn("ui", "bg-chat.png failed to load");
+            Diagnostics.warn("ui", "bg-chat.png failed to load");
         }
         wallpaper.setBackground(new Background(new BackgroundImage(
                 img,

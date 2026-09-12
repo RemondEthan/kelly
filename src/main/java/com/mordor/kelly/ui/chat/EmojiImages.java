@@ -5,30 +5,19 @@ import javafx.scene.image.ImageView;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Windows 上 JavaFX 无法渲染彩色 emoji 字体，用 Twemoji PNG 画表情。
- * 协议仍传 Unicode，只在界面替换为图片。
- */
 public final class EmojiImages {
 
-    static final String[] CATALOG = {
-            "😀", "😁", "😂", "🤣", "😊", "😍",
-            "😘", "😎", "🤩", "🥳", "🤔", "🙄",
-            "😴", "😪", "🤗", "🤭", "🤫", "🤐",
-            "👍", "👎", "👏", "🙏", "💪", "🤝",
-            "❤️", "💔", "💯", "🔥", "✨", "🎉",
-            "☕", "🍕", "🍺", "🎁", "📎", "📁",
-            "🟢", "🔴"
-    };
+    private static final Map<String, String> EMOJI_MAP = loadEmojiMap();
+    private static final List<String> EMOJI_LIST = Collections.unmodifiableList(new ArrayList<>(EMOJI_MAP.values()));
 
-    private static final List<String> LONGEST_FIRST = longestFirst();
-    private static final Map<String, Image> CACHE = new ConcurrentHashMap<>();
+    static {
+        if (EMOJI_MAP.isEmpty()) {
+            System.err.println("[EmojiImages] Warning: No emoji PNG resources found on classpath /emoji/");
+        }
+    }
 
     private EmojiImages() {}
 
@@ -51,7 +40,7 @@ public final class EmojiImages {
         while (i < text.length()) {
             String match = matchAt(text, i);
             if (match != null) {
-                if (buf.length() > 0) {
+                if (!buf.isEmpty()) {
                     offsets[childIdx] = rawOffset;
                     flow.getChildren().add(new Text(buf.toString()));
                     rawOffset += buf.length();
@@ -68,7 +57,7 @@ public final class EmojiImages {
                 i++;
             }
         }
-        if (buf.length() > 0) {
+        if (!buf.isEmpty()) {
             offsets[childIdx] = rawOffset;
             flow.getChildren().add(new Text(buf.toString()));
         }
@@ -85,20 +74,17 @@ public final class EmojiImages {
                 count++;
                 i += match.length();
             } else {
-                // 找下一段连续非 emoji 字符
                 int j = i;
                 while (j < text.length()) {
                     String m = matchAt(text, j);
                     if (m != null) break;
                     j++;
                 }
-                if (j > i) count++; // 跳过了一段 Text（非 emoji 区域）
+                if (j > i) count++;
                 if (j < text.length()) {
-                    i = j; // j 处有 emoji，继续处理
+                    i = j;
                 } else {
-                    // j 到达末尾：剩余的 [i, end) 在主算法里由 post-loop flush 处理
-                    // 如果还有未处理字符则算 1 个 Text（会在 post-loop flush 中被计数）
-                    if (i < text.length()) count++;
+                    count++;
                     i = j;
                     break;
                 }
@@ -115,10 +101,7 @@ public final class EmojiImages {
                 view.setImage(img);
             }
         } catch (Throwable e) {
-            // Headless test environment: JavaFX graphics subsystem throws
-            // NoClassDefFoundError / ExceptionInInitializerError / RuntimeException
-            // depending on which class fails to load. Return the view empty so
-            // headless tests don't crash; real displays never hit this path.
+            // Headless test environment
         }
         view.setFitHeight(size);
         view.setFitWidth(size);
@@ -131,12 +114,12 @@ public final class EmojiImages {
         if (emoji == null || emoji.isEmpty()) {
             return "";
         }
-        String withVs = hexKey(emoji, false);
-        if (resourceExists(withVs)) {
-            return withVs;
+        String key = hexKey(emoji, false);
+        if (resourceExists(key)) {
+            return key;
         }
         String noVs = hexKey(emoji, true);
-        return resourceExists(noVs) ? noVs : withVs;
+        return resourceExists(noVs) ? noVs : key;
     }
 
     private static Image image(String emoji) {
@@ -157,13 +140,50 @@ public final class EmojiImages {
         return loaded;
     }
 
-    private static String matchAt(String text, int index) {
-        for (String emoji : LONGEST_FIRST) {
-            if (text.startsWith(emoji, index)) {
-                return emoji;
+    private static Map<String, String> loadEmojiMap() {
+        Map<String, String> map = new HashMap<>();
+        List<String> candidateKeys = generateCandidateKeys();
+        for (String key : candidateKeys) {
+            if (resourceExists(key)) {
+                String emoji = hexKeyToEmoji(key);
+                if (emoji != null && !emoji.isEmpty()) {
+                    map.put(key, emoji);
+                }
             }
         }
-        return null;
+        return map;
+    }
+
+    private static List<String> generateCandidateKeys() {
+        List<String> keys = new ArrayList<>();
+        int[][] emojiRanges = {
+            {0x1F600, 0x1F64F}, // Emoticons
+            {0x1F300, 0x1F5FF}, // Misc Symbols and Pictographs
+            {0x1F680, 0x1F6FF}, // Transport and Map Symbols
+            {0x1F700, 0x1F77F}, // Alchemical Symbols
+            {0x1F780, 0x1F7FF}, // Geometric Shapes Extended
+            {0x1F800, 0x1F8FF}, // Supplemental Arrows-C
+            {0x1F900, 0x1F9FF}, // Supplemental Symbols and Pictographs
+            {0x1FA00, 0x1FA6F}, // Chess Symbols
+            {0x1FA70, 0x1FAFF}, // Symbols and Pictographs Extended-A
+            {0x2600, 0x26FF},   // Misc Symbols
+            {0x2700, 0x27BF},   // Dingbats
+            {0x2300, 0x23FF},   // Miscellaneous Technical
+            {0x2B50, 0x2B55},   // Stars
+            {0x3030, 0x3030},   // Wavy Dash
+            {0x303D, 0x303D},   // Part Alternation Mark
+            {0x3297, 0x3297},   // Circled Ideograph Congratulation
+            {0x3299, 0x3299},   // Circled Ideograph Secret
+            {0xFE0F, 0xFE0F},   // Variation Selector-16
+        };
+        for (int[] range : emojiRanges) {
+            for (int cp = range[0]; cp <= range[1]; cp++) {
+                keys.add(Integer.toHexString(cp));
+                // Also add with variation selector for emojis that have both forms
+                keys.add(Integer.toHexString(cp) + "-fe0f");
+            }
+        }
+        return keys;
     }
 
     private static String hexKey(String emoji, boolean stripVs) {
@@ -177,13 +197,39 @@ public final class EmojiImages {
         return String.join("-", parts);
     }
 
+    private static String hexKeyToEmoji(String key) {
+        try {
+            String[] parts = key.split("-");
+            int[] cps = new int[parts.length];
+            for (int i = 0; i < parts.length; i++) {
+                cps[i] = Integer.parseInt(parts[i], 16);
+            }
+            StringBuilder sb = new StringBuilder();
+            for (int cp : cps) {
+                sb.append(Character.toChars(cp));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static boolean resourceExists(String key) {
         return EmojiImages.class.getResource("/emoji/" + key + ".png") != null;
     }
 
-    private static List<String> longestFirst() {
-        List<String> list = new ArrayList<>(List.of(CATALOG));
-        list.sort(Comparator.comparingInt(String::length).reversed());
-        return List.copyOf(list);
+    private static String matchAt(String text, int index) {
+        for (String emoji : EMOJI_LIST) {
+            if (text.startsWith(emoji, index)) {
+                return emoji;
+            }
+        }
+        return null;
+    }
+
+    private static final ConcurrentHashMap<String, Image> CACHE = new ConcurrentHashMap<>();
+
+    public static List<String> getSupportedEmojis() {
+        return new ArrayList<>(EMOJI_LIST);
     }
 }

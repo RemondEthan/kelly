@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,5 +40,12 @@ class WinIconFormatTest {
         }
         assertTrue(maxEdge <= 48, "WiX shortcut icon max 48px, got " + maxEdge);
         assertTrue(data.length < 40_000, "icon too large for MSI Icon table: " + data.length);
+    }
+
+    @Test
+    void pomWinProfilePointsAtWixIco() throws IOException {
+        String pom = Files.readString(Path.of("pom.xml"));
+        assertTrue(pom.contains("jpackage-win"));
+        assertTrue(pom.contains("src/main/jpackage/kelly.ico"));
     }
 }

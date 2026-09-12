@@ -1,6 +1,6 @@
 package com.mordor.kelly.ui.login;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.config.KelsyConfig;
 import com.mordor.kelly.model.AppState;
 import com.mordor.kelly.service.AvatarService;
@@ -13,10 +13,11 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
-import javafx.scene.control.Control;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -130,7 +131,11 @@ public class LoginPane extends VBox {
         VBox.setVgrow(cardTop, Priority.ALWAYS);
         VBox.setVgrow(cardBottom, Priority.ALWAYS);
 
-        VBox card = new VBox(10, cardTop, fields, offline, modelConfig, connect, cardBottom);
+        HBox logoRow = new HBox(appLogo());
+        logoRow.setAlignment(Pos.CENTER);
+        logoRow.getStyleClass().add("login-logo-row");
+
+        VBox card = new VBox(10, cardTop, logoRow, fields, offline, modelConfig, connect, cardBottom);
         card.getStyleClass().add("login-card");
         card.setMaxWidth(Double.MAX_VALUE);
         card.setMaxHeight(Double.MAX_VALUE);
@@ -183,6 +188,19 @@ public class LoginPane extends VBox {
                 ? "脱机只和本机秘书对话，不会连接服务器"
                 : "请与对方约定相同的 IM_CODE 和初始口令进行配对");
         connect.setText(on ? "进 入" : "连 接");
+    }
+
+    private static ImageView appLogo() {
+        ImageView view = new ImageView();
+        var url = LoginPane.class.getResource("/icons/kelly.png");
+        if (url != null) {
+            view.setImage(new Image(url.toExternalForm(), 96, 96, true, true));
+        }
+        view.setFitWidth(96);
+        view.setFitHeight(96);
+        view.setPreserveRatio(true);
+        view.setSmooth(true);
+        return view;
     }
 
     private StackPane avatarPicker() {
@@ -284,22 +302,22 @@ public class LoginPane extends VBox {
         ImClient client = new ImClient();
         AvatarService.thumbnailBase64(avatarPath).ifPresent(client::setAvatarPlaintext);
         int port = Integer.parseInt(input.port());
-        Diag.log("login", "connect click user=%s host=%s:%s", input.username(), input.ip(), input.port());
+        Diagnostics.log("login", "connect click user=%s host=%s:%s", input.username(), input.ip(), input.port());
         client.connect(input.ip(), port, input.imCode(), input.password(), input.username())
                 .thenRun(() -> {
-                    Diag.log("login", "handshake ok, queue enter-chat");
+                    Diagnostics.log("login", "handshake ok, queue enter-chat");
                     Platform.runLater(() -> {
                         long t0 = System.nanoTime();
-                        Diag.log("login", "enter chat begin");
+                        Diagnostics.log("login", "enter chat begin");
                         onConnect.accept(new AppState(
                                 input.username(),
                                 client,
                                 AvatarService.load(avatarPath).orElse(null)));
-                        Diag.log("login", "enter chat done %dms", Diag.elapsedMs(t0));
+                        Diagnostics.log("login", "enter chat done %dms", Diagnostics.elapsedMs(t0));
                     });
                 })
                 .exceptionally(ex -> {
-                    Diag.error("login", "handshake failed: %s", connectErrorMessage(ex));
+                    Diagnostics.error("login", "handshake failed: %s", connectErrorMessage(ex));
                     Platform.runLater(() -> {
                         client.close();
                         offline.setDisable(false);

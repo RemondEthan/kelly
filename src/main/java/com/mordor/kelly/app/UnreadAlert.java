@@ -2,9 +2,11 @@ package com.mordor.kelly.app;
 
 import com.mordor.kelly.service.ImClient;
 import javafx.application.Platform;
+import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
 import java.awt.Taskbar;
+import java.util.List;
 
 /**
  * 窗口不在前台时收到聊天，托盘 / 任务栏 / 标题栏图标红点闪烁；回到前台后停闪。
@@ -15,15 +17,22 @@ final class UnreadAlert {
     private final TrayManager tray;
     private final java.awt.Image awtNormal;
     private final java.awt.Image awtAlert;
+    private final List<Image> fxNormal;
+    private final List<Image> fxAlert;
+    private final long hwnd;
     private final BlinkTimer blinkTimer = new BlinkTimer();
     private boolean on;
 
     private UnreadAlert(Stage stage, TrayManager tray,
-                        java.awt.Image awtNormal, java.awt.Image awtAlert) {
+                        java.awt.Image awtNormal, java.awt.Image awtAlert,
+                        List<Image> fxNormal, List<Image> fxAlert, long hwnd) {
         this.stage = stage;
         this.tray = tray;
         this.awtNormal = awtNormal;
         this.awtAlert = awtAlert != null ? awtAlert : awtNormal;
+        this.fxNormal = fxNormal;
+        this.fxAlert = fxAlert != null ? fxAlert : fxNormal;
+        this.hwnd = hwnd;
         stage.focusedProperty().addListener((obs, was, focused) -> {
             if (focused) {
                 clear();
@@ -42,11 +51,15 @@ final class UnreadAlert {
     }
 
     static UnreadAlert install(Stage stage, TrayManager tray) {
+        long hwnd = WinFlash.hwndOf(stage);
         return new UnreadAlert(
                 stage,
                 tray,
                 AppIcons.awtImage("/icons/kelly.png"),
-                AppIcons.awtImage("/icons/kelly-alert.png"));
+                AppIcons.awtImage("/icons/kelly-alert.png"),
+                AppIcons.fxIcons("/icons/kelly.png"),
+                AppIcons.fxIcons("/icons/kelly-alert.png"),
+                hwnd);
     }
 
     void watch(ImClient client) {
@@ -78,10 +91,18 @@ final class UnreadAlert {
             if (!wasOn) {
                 applyIcons(true);
             }
+            // Windows 上把任务栏按钮交给 user32 FlashWindowEx 高亮闪烁；
+            // 反射拿到 HWND 失败（hwnd=0）则继续走 BlinkTimer 软件模拟。
+            if (hwnd != 0) {
+                WinFlash.start(hwnd);
+            }
             blinkTimer.start(this::onBlinkTick);
         } else if (wasOn) {
             blinkTimer.stop();
             applyIcons(false);
+            if (hwnd != 0) {
+                WinFlash.stop(hwnd);
+            }
         }
     }
 
@@ -89,13 +110,18 @@ final class UnreadAlert {
         if (!on) {
             return;
         }
-        applyIcons(blinkTimer.isPhase());
+        // Windows 上任务栏按钮在原生闪烁，BlinkTimer 只翻托盘图标就够了，
+        // 否则图标每 500ms 切一次会盖掉系统高亮闪烁、视觉反而乱。
+        if (hwnd != 0) {
+            tray.setIconImage(blinkTimer.isPhase() ? awtAlert : awtNormal);
+        } else {
+            applyIcons(blinkTimer.isPhase());
+        }
     }
 
     private void applyIcons(boolean alert) {
         tray.setIconImage(alert ? awtAlert : awtNormal);
-        String fxPath = alert ? "/icons/kelly-alert.png" : "/icons/kelly.png";
-        Platform.runLater(() -> AppIcons.applyStage(stage, fxPath));
+        Platform.runLater(() -> stage.getIcons().setAll(alert ? fxAlert : fxNormal));
         AppIcons.applyTaskbar(alert ? awtAlert : awtNormal);
         applyDockBadge(alert);
     }

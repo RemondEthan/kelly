@@ -27,6 +27,11 @@
 }
 
 /* 表单卡片：白底圆角阴影 */
+.login-logo-row {
+    -fx-alignment: center;
+    -fx-padding: 0 0 6 0;
+}
+
 .login-card {
     -fx-background-color: white;
     -fx-background-radius: 6 6 6 6;

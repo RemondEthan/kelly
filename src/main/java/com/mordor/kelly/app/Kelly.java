@@ -1,6 +1,6 @@
 package com.mordor.kelly.app;
 
-import com.mordor.kelly.common.Diag;
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.KelsyRuntime;
 import com.mordor.kelly.model.AppState;
 import com.mordor.kelly.service.ImClient;
@@ -15,7 +15,7 @@ import javafx.stage.Stage;
 public class Kelly extends Application {
 
     private static final double WIDTH = 720;
-    private static final double HEIGHT = 449;
+    private static final double HEIGHT = 520;
 
     private Stage stage;
     private StackPane root;
@@ -47,7 +47,7 @@ public class Kelly extends Application {
         }
 
         stage.show();
-        Diag.startFxWatchdog();
+        Diagnostics.startFxWatchdog();
 
         TrayManager trayManager = TrayManager.install(stage);
         AppIcons.applyTaskbar(AppIcons.awtImage("/icons/kelly.png"));
