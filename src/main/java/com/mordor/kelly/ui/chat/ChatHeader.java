@@ -1,18 +1,24 @@
 package com.mordor.kelly.ui.chat;
 
 import com.mordor.kelly.model.AppState;
+import com.mordor.kelly.ui.chat.font.ChatFontSettingsService;
+import com.mordor.kelly.ui.chat.font.FontSettingsDialog;
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.stage.Stage;
+import org.kordamp.ikonli.javafx.FontIcon;
+import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
 
 public class ChatHeader extends HBox {
 
-    public ChatHeader(AppState state, ChatController controller) {
+    public ChatHeader(AppState state, ChatController controller, Node chatRoot, ChatFontSettingsService fontService) {
         super();
         getStyleClass().add("header");
         setAlignment(Pos.CENTER_LEFT);
@@ -46,5 +52,15 @@ public class ChatHeader extends HBox {
                 state.peerDisplayProperty()));
 
         getChildren().addAll(title, spacer, knowledge, meta);
+        FontIcon fontButton = new FontIcon(MaterialDesignF.FORMAT_FONT);
+        fontButton.getStyleClass().add("header-font-button");
+        fontButton.setCursor(javafx.scene.Cursor.HAND);
+        fontButton.setOnMouseClicked(e ->
+                FontSettingsDialog.show(
+                        getScene() == null ? null : (Stage) getScene().getWindow(),
+                        fontService.load(),
+                        chatRoot,
+                        fontService));
+        getChildren().add(fontButton);
     }
 }

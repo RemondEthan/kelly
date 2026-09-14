@@ -5,6 +5,8 @@ import com.mordor.kelly.kelsy.service.KnowledgeStore;
 import com.mordor.kelly.kelsy.todo.TodoReminderService;
 import com.mordor.kelly.kelsy.ui.knowledge.KnowledgePane;
 import com.mordor.kelly.model.AppState;
+import com.mordor.kelly.ui.chat.font.ChatFontApplier;
+import com.mordor.kelly.ui.chat.font.ChatFontSettingsService;
 import javafx.scene.control.SplitPane;
 import javafx.scene.image.Image;
 import javafx.scene.layout.Background;
@@ -22,6 +24,7 @@ import javafx.scene.layout.StackPane;
 public class ChatPane extends StackPane {
 
     private final ChatController controller;
+    private final ChatFontSettingsService fontService;
     private final BorderPane ui;
     private final BorderPane chat;
     private KnowledgePane knowledge;
@@ -34,6 +37,7 @@ public class ChatPane extends StackPane {
         setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
 
         controller = new ChatController(state);
+        fontService = new ChatFontSettingsService();
         Diagnostics.log("ui", "controller %dms", Diagnostics.elapsedMs(t0));
 
         ui = new BorderPane();
@@ -49,7 +53,7 @@ public class ChatPane extends StackPane {
                         : controller.avatarOf(name));
         chat = new BorderPane();
         chat.setCenter(new MessageListView(controller));
-        ui.setTop(new ChatHeader(state, controller));
+        ui.setTop(new ChatHeader(state, controller, this, fontService));
         ui.setLeft(new RoomMemberList(controller, input::insertMention));
         ui.setBottom(input);
         applyCenter();
@@ -57,6 +61,7 @@ public class ChatPane extends StackPane {
         controller.knowledgeVisibleProperty().addListener((obs, o, n) -> applyCenter());
 
         getChildren().addAll(wallpaper(), ui);
+        ChatFontApplier.apply(this, fontService.load());
         Diagnostics.log("ui", "ChatPane constructed %dms", Diagnostics.elapsedMs(t0));
     }
 
