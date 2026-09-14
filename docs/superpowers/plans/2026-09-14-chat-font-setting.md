@@ -417,10 +417,9 @@ class ChatFontApplierTest {
         ChatFontApplier.apply(root, new ChatFontSettings(null, ChatFontScale.LARGE));
         assertTrue(lbl.getStyle().contains("-fx-font-size"),
                 "Label should have -fx-font-size after apply, style=" + lbl.getStyle());
-        // factor 1.1 -> style includes "<before*1.1>px"
-        double expected = before * ChatFontScale.LARGE.factor();
-        assertTrue(lbl.getStyle().contains(String.format(java.util.Locale.ROOT, "%.3fpx", expected).replaceAll("0+$", "").replaceAll("\\.$", "")),
-                "style=" + lbl.getStyle() + " expected near " + expected);
+        long expected = Math.round(before * ChatFontScale.LARGE.factor());
+        assertTrue(lbl.getStyle().contains(expected + "px"),
+                "style=" + lbl.getStyle() + " expected to contain " + expected + "px");
     }
 
     @Test
@@ -431,8 +430,9 @@ class ChatFontApplierTest {
         ChatFontApplier.apply(root, new ChatFontSettings(null, ChatFontScale.MEDIUM));
         assertTrue(tf.getStyle().contains("-fx-font-size"),
                 "TextField should have -fx-font-size after apply, style=" + tf.getStyle());
-        assertTrue(tf.getStyle().contains(String.valueOf((int) Math.round(before))),
-                "style=" + tf.getStyle() + " expected near " + before);
+        long expected = Math.round(before * ChatFontScale.MEDIUM.factor());
+        assertTrue(tf.getStyle().contains(expected + "px"),
+                "style=" + tf.getStyle() + " expected to contain " + expected + "px");
     }
 
     @Test
@@ -529,11 +529,7 @@ public final class ChatFontApplier {
 Run: `mvn -q -Dtest=ChatFontApplierTest test`
 Expected: PASS, 6 tests, 0 failures.
 
-If `largeScale_labelGetsLargerFontSizeStyle` fails on the formatted px assertion (JavaFX rounds the label's reported `getFont().getSize()` to a whole number, so `before*1.1` produces a non-integer), relax the assertion to:
-```java
-assertTrue(lbl.getStyle().matches(".*-fx-font-size: \\d+px;.*"), "style=" + lbl.getStyle());
-```
-and rerun. Acceptable: any integer-pixel font-size in the style.
+Note: assertions match `formatFontSize` output which rounds to nearest integer px (e.g. `12.0` × `1.1` → `13px`).
 
 - [ ] **Step 5: Commit**
 
