@@ -41,10 +41,9 @@ final class MacQuitHook {
             @Override
             public void handleDidBecomeActiveAction(Application app, long time) {
                 if (prev != null) prev.handleDidBecomeActiveAction(app, time);
-                // Cmd+Tab / 点 Dock 回到前台：把已隐藏的聊天窗拉回来
-                if (onShow != null) {
-                    onShow.run();
-                }
+                // 不在这里调 onShow：handleDidBecomeActiveAction 在系统事件（通知、
+                // 权限弹窗等）让 app 变 active 时也会触发，会把已隐藏的窗口拉出来。
+                // 只在 handleDidUnhideAction（真正取消隐藏）里恢复窗口。
             }
 
             @Override
