@@ -62,58 +62,114 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * 聊天业务：把 ImClient 事件转成消息列表，发送时走加密转发。
+ * 聊天业务控制器：管理消息列表、处理 IM 事件、协调 Kelsy 助手交互。
+ *
+ * <h3>核心职责</h3>
+ * <ul>
+ *   <li>将 {@link ImClient} 的事件（消息、图片、加入/离开等）转换为 {@link Message} 列表</li>
+ *   <li>处理消息发送（文本/图片），包括加密转发和 Kelsy 路由</li>
+ *   <li>协调 Kelsy 助手的流式回复、工具调用和引用显示</li>
+ *   <li>管理聊天历史的加载、分页和内存缓存</li>
+ *   <li>处理待办事项提醒的定时触发</li>
+ * </ul>
+ *
+ * <h3>JavaFX 属性</h3>
+ * <p>使用 {@link BooleanProperty} 和 {@link ObjectProperty} 实现响应式数据流：
+ * UI 层通过绑定这些属性自动更新，无需手动刷新。</p>
+ *
+ * <h3>线程模型</h3>
+ * <p>ImClient 事件在后台线程触发，通过 {@link Platform#runLater} 切换到 FX 应用线程处理。
+ * 所有 UI 更新必须在 FX 线程执行。</p>
  */
 public class ChatController {
 
+    /**
+     * 消息发送接口：抽象底层 IM 客户端的发送操作，便于测试注入。
+     */
     public interface PeerSender {
+        /** 发送文本消息 */
         void sendChat(String text) throws Exception;
 
+        /** 发送图片消息（元数据 + 分片数据） */
         default void sendImagePayload(String metaPlaintext, List<String> chunkPlaintexts) throws Exception {
             throw new IllegalStateException("图片发送未接入");
         }
     }
 
+    /** 应用全局状态（用户名、在线状态、头像等） */
     private final AppState state;
+    /** IM 配对码（用于标识聊天房间） */
     private final String imCode;
+    /** 当前用户名 */
     private final String username;
+    /** 聊天历史管理器（加密存储） */
     private final ChatHistory history;
+    /** 消息发送器（IM 客户端封装） */
     private final PeerSender peerSender;
+    /** 媒体文件存储管理器 */
     private final MediaStore mediaStore;
+    /** 接收中的图片分片组装器：mediaId → ImageAssembler */
     private final Map<String, ImageAssembler> incomingImages = new LinkedHashMap<>();
+    /** 接收中的图片元数据：mediaId → Meta */
     private final Map<String, ImageWire.Meta> incomingMeta = new LinkedHashMap<>();
+    /** Kelsy 房间配置（启用状态、头像、昵称） */
     private final KelsyRoomSettings settings;
+    /** Kelsy 运行时实例（管理 API key、助手服务等） */
     private KelsyRuntime runtime;
+    /** Kelsy 是否正在处理请求（防止重复提交） */
     private final AtomicBoolean kelsyBusy = new AtomicBoolean();
+    /** 实时助手消息（流式生成中） */
     private final ObjectProperty<AssistantMessage> liveAssistant = new SimpleObjectProperty<>();
+    /** 知识库面板是否可见 */
     private final BooleanProperty knowledgeVisible = new SimpleBooleanProperty(false);
+    /** 助手思考过程是否可见 */
     private final BooleanProperty thinkingVisible = new SimpleBooleanProperty(true);
+    /** Kelsy 助手是否启用 */
     private final BooleanProperty kelsyEnabled = new SimpleBooleanProperty(false);
+    /** 知识库内存使用是否超限警告 */
     private final BooleanProperty memoryWarn = new SimpleBooleanProperty(false);
+    /** 引用回合管理器：跟踪助手回复中的工具调用和引用 */
     private final CitationTurn citations = new CitationTurn();
-    private Consumer<List<String>> onCitationSources = paths -> {
-    };
-    private Consumer<String> onOpenKnowledge = path -> {
-    };
-    private Runnable onRefreshKnowledge = () -> {
-    };
+    /** 引用源变更回调 */
+    private Consumer<List<String>> onCitationSources = paths -> {};
+    /** 打开知识库文件回调 */
+    private Consumer<String> onOpenKnowledge = path -> {};
+    /** 刷新知识库回调 */
+    private Runnable onRefreshKnowledge = () -> {};
+
+    /** 消息列表（ObservableList：列表变化时 UI 自动更新） */
     private final ObservableList<Message> messages = FXCollections.observableArrayList();
+    /** 房间成员列表 */
     private final ObservableList<RoomMember> members = FXCollections.observableArrayList();
+    /** 人类成员数量绑定（排除 Kelsy 助手） */
     private final IntegerBinding humanCount = Bindings.createIntegerBinding(this::countHumans, members);
+    /** 对方头像映射：userId → Image */
     private final ObservableMap<Integer, Image> peerAvatars = FXCollections.observableHashMap();
+    /** 在线成员映射：userId → username */
     private final Map<Integer, String> peers = new LinkedHashMap<>();
+    /** 用户名到用户 ID 的反向映射 */
     private final Map<String, Integer> lastSeenIds = new LinkedHashMap<>();
+    /** 历史加载期间到达的实时消息（加载完成后合并） */
     private final List<Message> liveDuringLoad = new ArrayList<>();
+    /** 历史消息是否已加载完成 */
     private boolean historyReady;
+    /** 是否处于"跟随最新消息"模式 */
     private boolean followingLatest = true;
+    /** 是否正在加载更早的历史消息 */
     private boolean loadingOlder;
+    /** 是否已无更早的历史消息 */
     private boolean noMoreOlder;
-    /** 仅在 requestOlder 真正插入过更早消息后为 true；误 unfollow 再 follow 时禁止 setAll。 */
+    /** 是否已真正加载过更早历史（防止布局误触发的 setAll 清空实时消息） */
     private boolean loadedOlder;
+    /** 是否为脱机模式（不连接 IM 服务器） */
     private final boolean offline;
+    /** 延迟处理的待办事项路径（助手回复完成后再显示引用） */
     private List<String> deferredTodoPaths;
+    /** 待办事项提醒服务 */
     private TodoReminderService reminders;
+    /** 提醒定时器线程池 */
     private ScheduledExecutorService reminderClock;
+    /** 下一次提醒的定时任务 */
     private ScheduledFuture<?> reminderTick;
 
     public ChatController(AppState state) {

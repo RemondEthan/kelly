@@ -31,32 +31,70 @@ import java.io.UncheckedIOException;
 import java.util.function.Consumer;
 
 /**
- * 登录面板:极简风格,白色表单卡片铺满窗口,四周留出缩减后的灰边。
+ * 登录面板：极简风格的登录表单 UI。
  *
- * 窗口 600×449、卡片原宽 380 时,左右灰边各约 110px、上下各约 64px。
- * 边框空白缩 40% 后,内边距为上下 38px、左右 66px,卡片吃掉收回的空间。
+ * <h3>布局结构</h3>
+ * <pre>
+ *   VBox (本类, login-root, 填满窗口)
+ *   └── VBox (card, 白色卡片, 居中)
+ *       ├── Region (弹性顶部)
+ *       ├── HBox (logoRow, 应用 Logo)
+ *       ├── VBox (fields, 表单字段)
+ *       │   ├── Label (错误提示)
+ *       │   ├── Label (信息提示)
+ *       │   ├── HBox: IP + Port
+ *       │   ├── VBox: IM_CODE
+ *       │   ├── VBox: 初始口令
+ *       │   ├── HBox: 头像选择 + 用户名
+ *       │   └── HBox: 工作区路径 + 浏览按钮
+ *       ├── CheckBox "脱机登录"
+ *       ├── Button "⚙ 接入大模型"
+ *       ├── Button "连 接"
+ *       └── Region (弹性底部)
+ * </pre>
  *
- * 本类只做"装配 + 委托":所有业务校验与落盘由 LoginController 完成。
+ * <h3>职责分离</h3>
+ * <p>本类只做 UI 装裱和事件委托，所有业务校验与落盘由 {@link LoginController} 完成。</p>
+ *
+ * <h3>脱机模式</h3>
+ * <p>勾选"脱机登录"后，IP/端口/IM_CODE/口令字段禁用，
+ * 只保留用户名，进入本地与 Kelsy 助手对话的模式。</p>
  */
 public class LoginPane extends VBox {
 
+    /** 服务器 IP 输入框 */
     private final TextField serverIp = new TextField();
+    /** 服务器端口输入框 */
     private final TextField serverPort = new TextField();
+    /** IM 配对码输入框 */
     private final TextField imCode = new TextField();
+    /** 初始口令输入框（带可见性切换） */
     private final PasswordVisibilityField password = new PasswordVisibilityField();
+    /** 用户名输入框 */
     private final TextField username = new TextField();
+    /** 工作区路径输入框 */
     private final TextField workspace = new TextField();
+    /** 浏览工作区目录按钮 */
     private final Button browse = new Button("浏览");
 
+    /** 错误提示标签 */
     private final Label errorLabel = new Label();
+    /** 脱机登录复选框 */
     private final CheckBox offline = new CheckBox("脱机登录");
+    /** 信息提示标签 */
     private final Label info = new Label();
 
+    /** 登录业务控制器 */
     private final LoginController controller;
+    /** 登录成功回调：传入 AppState 进入聊天界面 */
     private final Consumer<AppState> onConnect;
+    /** 接入大模型配置按钮 */
     private final Button modelConfig = new Button("⚙ 接入大模型");
+    /** 连接/进入按钮 */
     private final Button connect = new Button("连 接");
+    /** 头像文件路径 */
     private String avatarPath = "";
+    /** 头像预览容器 */
     private StackPane avatarSlot;
 
     public LoginPane(Consumer<AppState> onConnect) {

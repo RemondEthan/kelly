@@ -1,3 +1,32 @@
 package com.mordor.kelly.model;
 
-public enum Sender { SELF, PEER, SYSTEM, ASSISTANT }
+/**
+ * 消息发送者枚举。
+ * 定义聊天消息的四种可能来源。
+ * 用于区分消息是谁发送的，在消息显示和处理时根据来源采取不同的策略。
+ */
+public enum Sender { 
+    /**
+     * 自己发送的消息。
+     * 表示当前登录用户发送的消息。
+     */
+    SELF, 
+    
+    /**
+     * 对方发送的消息。
+     * 表示聊天对象发送的消息。
+     */
+    PEER, 
+    
+    /**
+     * 系统消息。
+     * 表示系统自动生成的消息，如加入/离开聊天室通知等。
+     */
+    SYSTEM, 
+    
+    /**
+     * AI 助手发送的消息。
+     * 表示 AI 助手（Kelsy）发送的消息。
+     */
+    ASSISTANT 
+}

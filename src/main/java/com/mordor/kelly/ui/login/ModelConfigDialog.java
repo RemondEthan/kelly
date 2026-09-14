@@ -26,7 +26,32 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Optional;
 
-/** 登录卡点出的"接入大模型"配置对话框。写 ~/.kelly/kelsy/config.json 的 model 字段。 */
+/**
+ * 大模型配置对话框：配置 API 服务商、模型名和 API Key。
+ *
+ * <h3>配置存储</h3>
+ * <p>写入 {@code ~/.kelly/kelsy/config.json} 的 {@code model} 字段。</p>
+ *
+ * <h3>布局结构</h3>
+ * <pre>
+ *   Dialog
+ *   └── VBox (content)
+ *       ├── Label (错误提示)
+ *       └── GridPane (表单网格, 2列)
+ *           ├── Row 0: "服务商" + ComboBox (ProviderSpec)
+ *           ├── Row 1: "模型名" + TextField
+ *           └── Row 2: "API Key" + PasswordField
+ * </pre>
+ *
+ * <h3>交互逻辑</h3>
+ * <ul>
+ *   <li>选择服务商时自动填充默认模型名</li>
+ *   <li>三个字段全部非空时"保存"按钮才可用</li>
+ *   <li>保存时校验并写入配置文件</li>
+ * </ul>
+ *
+ * <p>工具类，不能实例化。</p>
+ */
 public final class ModelConfigDialog {
 
     private ModelConfigDialog() {}

@@ -35,37 +35,78 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * 可复制 TextFlow：JavaFX 的 Text 不会在拖动时改 selectionStart/End，
- * 必须自己用 hitTest 做鼠标选区。Ctrl/Cmd+C 把选区映射回 raw（emoji 保留 Unicode）。
+ * 可选择、可复制的 TextFlow 组件。
  *
- * ImageView 不参与命中字符，但跨过它时 raw 子串仍包含对应 emoji。
- * Scene 上只装一份复制过滤器，当前有选区的实例负责写出剪贴板。
+ * <h3>核心问题</h3>
+ * <p>JavaFX 的 {@link Text} 控件在拖动鼠标时<b>不会</b>自动更新 selectionStart/selectionEnd，
+ * 因此需要自己通过 hitTest（命中测试）计算鼠标选区。本类实现了完整的鼠标选区管理和
+ * Ctrl/Cmd+C 复制功能。</p>
+ *
+ * <h3>选区管理原理</h3>
+ * <ol>
+ *   <li>鼠标按下时记录锚点位置（anchorRaw）</li>
+ *   <li>鼠标拖动时通过 {@link #rawIndexAt} 将屏幕坐标映射为原始文本索引</li>
+ *   <li>{@link #applyRawSelection} 将原始文本选区映射到各 Text 子节点的 selectionStart/End</li>
+ *   <li>Prism 渲染引擎根据 selectionStart/End 绘制选中高亮</li>
+ * </ol>
+ *
+ * <h3>emoji 处理</h3>
+ * <p>emoji 在 TextFlow 中显示为 {@link ImageView}，不参与字符命中测试，
+ * 但通过 {@link #charOffsets} 映射，raw 子串仍包含对应 emoji 的 Unicode 字符。</p>
+ *
+ * <h3>富文本支持</h3>
+ * <p>通过 {@link Segment} 密封接口支持多种文本片段：
+ * 纯文本（加粗/斜体）、emoji、行内代码、超链接。</p>
+ *
+ * <h3>Scene 级复制过滤器</h3>
+ * <p>每个 Scene 只安装一份 Ctrl+C 事件过滤器，通过 {@link #ACTIVE} 原子引用
+ * 追踪当前活跃的 SelectableTextFlow 实例，由它负责写出剪贴板内容。</p>
  */
 public class SelectableTextFlow extends TextFlow {
 
-    /** 富文本片段,可由 MarkdownView 等富文本渲染器构造。 */
+    /**
+     * 富文本片段密封接口：支持多种文本类型。
+     *
+     * <p>使用 Java 17+ 的 sealed interface 和 record 特性，
+     * 编译器确保所有实现类都在本文件中定义。</p>
+     */
     public sealed interface Segment {
+        /** 纯文本片段（可加粗/斜体） */
         record Text(String value, boolean bold, boolean italic) implements Segment {
             public Text(String value) { this(value, false, false); }
         }
+        /** Emoji 片段 */
         record Emoji(String codepoint) implements Segment {}
+        /** 行内代码片段 */
         record Code(String value) implements Segment {}
+        /** 超链接片段 */
         record Link(String text, String dest) implements Segment {}
     }
 
+    /** Ctrl+C 快捷键（Windows/Linux） */
     private static final KeyCombination COPY_WIN = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
+    /** Cmd+C 快捷键（macOS） */
     private static final KeyCombination COPY_MAC = new KeyCodeCombination(KeyCode.C, KeyCombination.META_DOWN);
+    /** Scene 属性中用于标记已安装复制过滤器的 key */
     private static final Object SCENE_COPY_KEY = new Object();
+    /** 当前活跃的 SelectableTextFlow（用于复制操作） */
     private static final AtomicReference<SelectableTextFlow> ACTIVE = new AtomicReference<>();
-    /** Prism 把 selectionFill 当成选中字形的颜色，默认白色；必须保持深色。 */
+    /** Prism 渲染引擎将 selectionFill 作为选中字形颜色，必须保持深色（默认白色会导致选区不可见） */
     static final Color SELECTION_GLYPH = Color.web("#212121");
+    /** 自定义选区高亮颜色（蓝色背景） */
     private static final Color SELECTION_HIGHLIGHT = Color.web("#90CAF9");
 
+    /** 每个子节点在原始文本中的字符偏移量 */
     private int[] charOffsets;
+    /** 当前选区 [start, end] 在原始文本中的索引 */
     private final AtomicReference<int[]> currentSelection = new AtomicReference<>(new int[]{0, 0});
+    /** 原始文本（包含 emoji 的 Unicode 字符串） */
     private String raw;
+    /** 鼠标按下时的锚点位置（原始文本索引） */
     private int anchorRaw;
+    /** 文本属性（支持外部绑定） */
     private final StringProperty text = new SimpleStringProperty();
+    /** 选区高亮路径（覆盖在 Text 子节点上方） */
     private final Path highlight = new Path();
 
     public final StringProperty textProperty() { return text; }

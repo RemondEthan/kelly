@@ -1,3 +1,21 @@
+/**
+ * 提醒格式化器。
+ *
+ * <p>负责将待办提醒信息编码为文本格式，以及从文本格式反解析为结构化数据。
+ *
+ * <p>编码格式（用于 UI 显示）：
+ * <pre>
+ *   还有 2 条待办待处理
+ *   - 完成产品评审 | 截止 2026-03-20 | knowledge/todos/2026-03-20-产品评审.md
+ *   - 提交测试报告 | 截止 2026-03-18 | 已逾期 | knowledge/todos/2026-03-18-测试报告.md
+ * </pre>
+ *
+ * <p>反解析格式（用于从 AI 回复中提取提醒信息）：
+ * 支持从上述格式反解析为 {@link ReminderItem} 列表。
+ *
+ * @see ReminderItem
+ * @see TodoReminderService
+ */
 package com.mordor.kelly.kelsy.todo;
 
 import java.time.LocalDate;
@@ -8,9 +26,17 @@ import java.util.Optional;
 
 public final class ReminderFormat {
 
+    /** 私有构造函数，防止实例化 */
     private ReminderFormat() {
     }
 
+    /**
+     * 将待办卡片列表编码为提醒文本。
+     *
+     * @param cards 待办卡片列表
+     * @param today 当前日期（用于判断是否逾期）
+     * @return 格式化的提醒文本
+     */
     public static String encode(List<TodoCard> cards, LocalDate today) {
         List<TodoCard> list = cards == null ? List.of() : cards;
         StringBuilder sb = new StringBuilder();
@@ -26,6 +52,12 @@ public final class ReminderFormat {
         return sb.toString();
     }
 
+    /**
+     * 从文本格式反解析提醒信息。
+     *
+     * @param content 提醒文本
+     * @return 解析后的提醒项列表，解析失败时返回 Optional.empty()
+     */
     public static Optional<List<ReminderItem>> parse(String content) {
         if (content == null || content.isBlank()) {
             return Optional.empty();
@@ -52,6 +84,10 @@ public final class ReminderFormat {
         return Optional.of(List.copyOf(items));
     }
 
+    /**
+     * 解析单个提醒项。
+     * 格式：标题 | 截止 日期 | [已逾期] | 路径
+     */
     private static Optional<ReminderItem> parseItem(String body) {
         String[] parts = body.split(" \\| ");
         if (parts.length < 3) {

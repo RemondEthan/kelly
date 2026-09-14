@@ -28,23 +28,63 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignC;
 import java.util.function.Consumer;
 
 /**
- * 左侧成员列表：头像 + 小字名字，可收起成窄栏。点自己的头像可更换；点 tars 插入提及。
+ * 左侧房间成员列表：显示在线成员头像和名字，可收起/展开。
+ *
+ * <h3>布局结构</h3>
+ * <pre>
+ *   VBox (本类, member-list)
+ *   ├── HBox (heading, 标题行)
+ *   │   ├── Label "聊天室"
+ *   │   ├── Label "N 人" (人数)
+ *   │   ├── Button "添加秘书" (Kelsy 未启用时显示)
+ *   │   └── FontIcon (◀/▶ 收起/展开图标)
+ *   └── ScrollPane
+ *       └── VBox (rows, 成员行列表)
+ *           ├── HBox: AvatarView + Label "用户名（我）" (自己)
+ *           ├── HBox: AvatarView + Label "秘书名" + Button "移除" (Kelsy)
+ *           └── HBox: AvatarView + Label "对方名" (其他成员)
+ * </pre>
+ *
+ * <h3>交互功能</h3>
+ * <ul>
+ *   <li>点击标题行 → 收起/展开成员列表</li>
+ *   <li>点击自己的头像 → 选择新头像</li>
+ *   <li>点击 Kelsy 成员 → 在输入框插入 @提及</li>
+ *   <li>展开时点击"移除" → 禁用 Kelsy 助手</li>
+ * </ul>
+ *
+ * <h3>收起/展开机制</h3>
+ * <p>通过修改 VBox 的 min/max/prefWidth 实现宽度变化。
+ * 收起时只显示头像（52px 宽），展开时显示头像 + 名字（136px 宽）。</p>
  */
 public class RoomMemberList extends VBox {
 
+    /** 展开时的最小宽度 */
     private static final double EXPANDED_MIN = 120;
+    /** 展开时的首选宽度 */
     private static final double EXPANDED_PREF = 136;
+    /** 展开时的最大宽度 */
     private static final double EXPANDED_MAX = 168;
+    /** 收起时的宽度 */
     private static final double COLLAPSED_WIDTH = 52;
 
+    /** 聊天控制器 */
     private final ChatController controller;
+    /** @提及回调：将提及文本插入输入框 */
     private final Consumer<String> onMention;
+    /** 成员行容器 */
     private final VBox rows = new VBox(10);
+    /** 标题标签 */
     private final Label title = new Label("聊天室");
+    /** 人数标签 */
     private final Label count = new Label();
+    /** 添加秘书按钮（Kelsy 未启用时显示） */
     private final Button addKelsyBtn = new Button("添加秘书");
+    /** 收起/展开切换图标 */
     private final FontIcon toggleIcon = new FontIcon(MaterialDesignC.CHEVRON_LEFT);
+    /** 头像保存服务 */
     private final SaveLastLoginService saveService = new SaveLastLoginService();
+    /** 当前是否展开状态 */
     private boolean expanded = true;
 
     public RoomMemberList(ChatController controller, Consumer<String> onMention) {

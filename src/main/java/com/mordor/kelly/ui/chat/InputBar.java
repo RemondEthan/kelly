@@ -44,21 +44,59 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignS;
 import javax.imageio.ImageIO;
 
 /**
- * 聊天输入栏：可选图片草稿 + 附件 + 文本 + 表情 + 发送。
+ * 聊天输入栏组件：整合图片草稿、附件、文本输入、表情选择和发送功能。
+ *
+ * <h3>布局结构</h3>
+ * <pre>
+ *   VBox (本类, input-bar)
+ *   ├── HBox (draftRow, 图片草稿预览行，有草稿时才显示)
+ *   │   ├── ImageView (缩略图)
+ *   │   ├── Label ("截图草稿，发送后传给对方")
+ *   │   └── Button ("×" 清除草稿)
+ *   └── HBox (editor, 编辑行)
+ *       ├── Button (📎 附件)
+ *       ├── TextField (文本输入)
+ *       ├── Button (😊 表情)
+ *       ├── Button (➤ 发送)
+ *       └── Label (提示信息)
+ * </pre>
+ *
+ * <h3>功能说明</h3>
+ * <ul>
+ *   <li><b>图片粘贴</b> - Ctrl+V 粘贴剪贴板图片，显示草稿预览</li>
+ *   <li><b>@提及</b> - 输入 @ 后自动弹出成员选择列表</li>
+ *   <li><b>表情插入</b> - 点击 😊 按钮弹出表情网格</li>
+ *   <li><b>发送</b> - 回车或点击发送按钮，先发图片草稿再发文本</li>
+ * </ul>
+ *
+ * <h3>JavaFX 事件处理</h3>
+ * <p>{@link KeyEvent#KEY_PRESSED} 事件过滤器处理快捷键（Ctrl+V 粘贴、ESC 清除草稿），
+ * 并将按键事件委托给 {@link MentionPopover} 处理（上下选择、回车确认）。</p>
  */
 public class InputBar extends VBox {
 
+    /** 文本输入框 */
     private final TextField textField;
+    /** 发送按钮 */
     private final Button sendBtn;
+    /** 提示标签（显示"秘书还在回复"等信息） */
     private final Label hint = new Label();
+    /** 提示自动隐藏定时器：3 秒后隐藏 */
     private final PauseTransition hideHint = new PauseTransition(Duration.seconds(3));
+    /** 图片草稿预览行（有草稿时才显示） */
     private final HBox draftRow = new HBox(8);
+    /** 草稿缩略图 */
     private final ImageView draftThumb = new ImageView();
+    /** 当前图片草稿，null 表示无草稿 */
     private ImageDraft draft;
 
+    /** 表情选择弹窗 */
     private final EmojiPopover emojiPopover;
+    /** 秘书昵称供应器（用于 @提及检测） */
     private final Supplier<String> secretaryNickname;
+    /** 房间成员列表（用于 @提及候选人） */
     private final ObservableList<RoomMember> members;
+    /** @提及选择弹窗 */
     private final MentionPopover mentionPopover;
 
     public InputBar(Function<String, ChatController.SendResult> onSend,
@@ -249,6 +287,15 @@ public class InputBar extends VBox {
         sendBtn.setDisable(draft == null && (n == null || n.isBlank()));
     }
 
+    /**
+     * 将 JavaFX Image 转换为 PNG 字节数组。
+     *
+     * <p>JavaFX 的 {@link Image} 使用 {@link PixelReader} 读取像素数据，
+     * 本方法将像素数据转为 {@link BufferedImage} 后通过 ImageIO 编码为 PNG。</p>
+     *
+     * @param img JavaFX 图片
+     * @return PNG 字节数组，转换失败返回 null
+     */
     static byte[] pngFromFx(Image img) {
         if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
             return null;
@@ -259,9 +306,11 @@ public class InputBar extends VBox {
         if (reader == null) {
             return null;
         }
+        // 读取所有像素为 ARGB int 数组
         WritablePixelFormat<IntBuffer> fmt = PixelFormat.getIntArgbInstance();
         int[] pix = new int[w * h];
         reader.getPixels(0, 0, w, h, fmt, pix, 0, w);
+        // 转为 BufferedImage
         BufferedImage buf = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         buf.setRGB(0, 0, w, h, pix, 0, w);
         try {

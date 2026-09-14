@@ -448,6 +448,15 @@
                                     </arguments>
                                 </configuration>
                             </execution>
+                            <execution>
+                                <id>patch-deb-startupwmclass</id>
+                                <phase>package</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>${project.basedir}/src/main/scripts/patch-deb-startupwmclass.sh</executable>
+                                    <workingDirectory>${project.build.directory}/dist</workingDirectory>
+                                </configuration>
+                            </execution>
                         </executions>
                     </plugin>
                 </plugins>

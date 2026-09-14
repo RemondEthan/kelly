@@ -1,3 +1,27 @@
+/**
+ * 提醒账本 —— 提醒状态的持久化存储。
+ *
+ * <p>记录每个日期的哪些时间槽已触发提醒，防止重复提醒。
+ * 使用简单的文本文件格式存储，便于调试和手动编辑。
+ *
+ * <p>存储格式：
+ * <pre>
+ *   2026-03-15 LOGIN TEN FOURTEEN
+ * </pre>
+ * 第一个字段是日期，后面是已触发的时间槽名称（空格分隔）。
+ *
+ * <p>使用场景：
+ * <ul>
+ *   <li>应用启动时加载上次的状态</li>
+ *   <li>每次触发提醒后更新状态</li>
+ *   <li>跨重启保持状态（应用关闭后重新打开不会重复提醒）</li>
+ * </ul>
+ *
+ * <p>文件位置：{@code knowledgeRoot/.todo-reminder-ledger}
+ *
+ * @see TodoReminderService
+ * @see ReminderSlot
+ */
 package com.mordor.kelly.kelsy.todo;
 
 import com.mordor.kelly.common.Diagnostics;
@@ -12,28 +36,56 @@ import java.util.Set;
 
 public final class ReminderLedger {
 
+    /** 账本文件路径 */
     private final Path file;
+
+    /** 上次触发提醒的日期 */
     private LocalDate date;
+
+    /** 当天已触发的时间槽集合 */
     private final EnumSet<ReminderSlot> slots = EnumSet.noneOf(ReminderSlot.class);
 
+    /**
+     * 私有构造函数。
+     */
     private ReminderLedger(Path file) {
         this.file = file;
     }
 
+    /**
+     * 打开账本文件并加载状态。
+     *
+     * @param file 账本文件路径
+     * @return 加载后的 ReminderLedger 实例
+     */
     public static ReminderLedger open(Path file) {
         ReminderLedger ledger = new ReminderLedger(file);
         ledger.load();
         return ledger;
     }
 
+    /**
+     * 检查指定日期的指定时间槽是否已触发。
+     *
+     * @param day  日期
+     * @param slot 时间槽
+     * @return true 如果该时间槽已触发
+     */
     public boolean fired(LocalDate day, ReminderSlot slot) {
         return day != null && slot != null && day.equals(date) && slots.contains(slot);
     }
 
+    /**
+     * 标记时间槽已触发，并持久化到文件。
+     *
+     * @param day   日期
+     * @param extra 要标记的时间槽集合
+     */
     public void mark(LocalDate day, Set<ReminderSlot> extra) {
         if (day == null || extra == null || extra.isEmpty()) {
             return;
         }
+        // 日期变化时清空旧状态
         if (!day.equals(date)) {
             date = day;
             slots.clear();
@@ -42,6 +94,9 @@ public final class ReminderLedger {
         save();
     }
 
+    /**
+     * 从文件加载账本状态。
+     */
     private void load() {
         date = null;
         slots.clear();
@@ -67,6 +122,9 @@ public final class ReminderLedger {
         }
     }
 
+    /**
+     * 将账本状态保存到文件。
+     */
     private void save() {
         if (file == null || date == null) {
             return;
