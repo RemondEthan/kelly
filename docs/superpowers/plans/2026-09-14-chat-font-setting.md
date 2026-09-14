@@ -208,6 +208,8 @@ package com.mordor.kelly.ui.chat.font;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.prefs.AbstractPreferences;
 import java.util.prefs.Preferences;
 
@@ -217,14 +219,17 @@ class ChatFontSettingsServiceTest {
 
     private static Preferences inMemoryPrefs() {
         return new AbstractPreferences(null, "") {
-            @Override protected void putSpi(String k, String v) { }
-            @Override protected String getSpi(String k) { return null; }
-            @Override protected void removeSpi(String k) { }
+            private final Map<String, String> store = new HashMap<>();
+
+            @Override protected void putSpi(String k, String v) { store.put(k, v); }
+            @Override protected String getSpi(String k) { return store.get(k); }
+            @Override protected void removeSpi(String k) { store.remove(k); }
             @Override protected void removeNodeSpi() { }
             @Override protected void flushSpi() { }
+            @Override protected void syncSpi() { }
             @Override protected AbstractPreferences childSpi(String n) { return null; }
             @Override protected String[] childrenNamesSpi() { return new String[0]; }
-            @Override protected String[] keysSpi() { return new String[0]; }
+            @Override protected String[] keysSpi() { return store.keySet().toArray(new String[0]); }
         };
     }
 
