@@ -780,19 +780,31 @@ public class ChatController {
         loadingOlder = true;
         followingLatest = false;
         String firstId = messages.get(0).id();
-        history.loadOlderThanAsync(firstId, ChatHistory.PAGE_SIZE, older -> Platform.runLater(() -> {
+        history.loadOlderThanAsync(firstId, ChatHistory.PAGE_SIZE, older -> onFx(() -> {
             loadingOlder = false;
-            if (older.isEmpty()) {
-                noMoreOlder = true;
-                return;
-            }
-            loadedOlder = true;
-            noMoreOlder = older.size() < ChatHistory.PAGE_SIZE;
-            messages.addAll(0, older);
-            while (messages.size() > ChatHistory.MEMORY_CAP) {
-                messages.remove(messages.size() - 1);
-            }
+            applyOlderPage(older);
         }));
+    }
+
+    /** 单测灌入当前可见窗口，不写系统提示。 */
+    void showSnapshot(List<Message> snapshot) {
+        messages.setAll(snapshot);
+        evictFromHead();
+        historyReady = true;
+    }
+
+    void applyOlderPage(List<Message> older) {
+        if (older == null || older.isEmpty()) {
+            noMoreOlder = true;
+            return;
+        }
+        loadedOlder = true;
+        followingLatest = false;
+        noMoreOlder = older.size() < ChatHistory.PAGE_SIZE;
+        messages.addAll(0, older);
+        while (messages.size() > ChatHistory.MEMORY_CAP) {
+            messages.remove(messages.size() - 1);
+        }
     }
 
     public void followLatest() {
@@ -806,7 +818,7 @@ public class ChatController {
             return;
         }
         loadedOlder = false;
-        history.loadNewestAsync(ChatHistory.MEMORY_CAP, newest -> Platform.runLater(() -> {
+        history.loadNewestAsync(ChatHistory.MEMORY_CAP, newest -> onFx(() -> {
             if (newest.isEmpty() && !messages.isEmpty()) {
                 Diagnostics.warn("chat", "followLatest skipped empty disk over %d live msgs", messages.size());
                 return;
@@ -1003,6 +1015,26 @@ public class ChatController {
             return;
         }
         if (!followingLatest) {
+            return;
+        }
+        if (loadedOlder) {
+            loadedOlder = false;
+            noMoreOlder = false;
+            history.loadNewestAsync(ChatHistory.MEMORY_CAP, newest -> onFx(() -> {
+                List<Message> next = new ArrayList<>(newest);
+                boolean present = false;
+                for (Message existing : next) {
+                    if (existing.id().equals(message.id())) {
+                        present = true;
+                        break;
+                    }
+                }
+                if (!present) {
+                    next.add(message);
+                }
+                messages.setAll(next);
+                evictFromHead();
+            }));
             return;
         }
         messages.add(message);

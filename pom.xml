@@ -335,7 +335,7 @@
                                     <arguments>
                                         <argument>--type</argument><argument>dmg</argument>
                                         <argument>--name</argument><argument>Kelly</argument>
-                                        <argument>--app-version</argument><argument>1.0.0</argument>
+                                        <argument>--app-version</argument><argument>${app.version}</argument>
                                         <argument>--vendor</argument><argument>Personal</argument>
                                         <argument>--icon</argument><argument>${project.basedir}/src/main/resources/icons/kelly.icns</argument>
                                         <argument>--input</argument><argument>${jpackage.input}</argument>
@@ -378,7 +378,7 @@
                                     <arguments>
                                         <argument>--type</argument><argument>msi</argument>
                                         <argument>--name</argument><argument>Kelly</argument>
-                                        <argument>--app-version</argument><argument>1.0.0</argument>
+                                        <argument>--app-version</argument><argument>${app.version}</argument>
                                         <argument>--vendor</argument><argument>Personal</argument>
                                         <!-- UpgradeCode：Kelly 独立稳定 UUID。jpackage 选项是 win-upgrade-uuid。 -->
                                         <argument>--win-upgrade-uuid</argument><argument>e8b3c4d1-7a52-4f9e-b1c6-0d4e8a7f2b91</argument>
@@ -430,7 +430,7 @@
                                         <argument>--type</argument><argument>deb</argument>
                                         <argument>--name</argument><argument>kelly</argument>
                                         <argument>--linux-package-name</argument><argument>kelly</argument>
-                                        <argument>--app-version</argument><argument>1.0.0</argument>
+                                        <argument>--app-version</argument><argument>${app.version}</argument>
                                         <argument>--vendor</argument><argument>Personal</argument>
                                         <argument>--icon</argument><argument>${project.basedir}/src/main/jpackage/linux/kelly.png</argument>
                                         <argument>--input</argument><argument>${jpackage.input}</argument>
