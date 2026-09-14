@@ -15,13 +15,11 @@
 }
 
 .header-title {
-    -fx-font-size: 14px;
     -fx-text-fill: #1565C0;
     -fx-font-weight: bold;
 }
 
 .header-meta {
-    -fx-font-size: 9px;
     -fx-text-fill: #909399;
 }
 
@@ -55,7 +53,6 @@
     -fx-background-radius: 12 12 0 12;
     -fx-padding: 6 10 6 10;
     -fx-text-fill: #212121;
-    -fx-font-size: 11px;
 }
 .bubble-self .text {
     -fx-fill: #212121;
@@ -66,7 +63,6 @@
     -fx-background-radius: 12 12 12 0;
     -fx-padding: 6 10 6 10;
     -fx-text-fill: #212121;
-    -fx-font-size: 11px;
 }
 .bubble-peer .text {
     -fx-fill: #212121;
@@ -92,12 +88,10 @@
     -fx-text-fill: #0D47A1;
 }
 .todo-reminder-due {
-    -fx-font-size: 10px;
     -fx-text-fill: #3D4F66;
 }
 .todo-reminder-due .text {
     -fx-fill: #3D4F66;
-    -fx-font-size: 10px;
 }
 
 .bubble-system {
@@ -105,7 +99,6 @@
     -fx-background-radius: 8 8 8 8;
     -fx-padding: 4 10 4 10;
     -fx-text-fill: #909399;
-    -fx-font-size: 10px;
     -fx-alignment: center;
 }
 .bubble-system .text {
@@ -113,7 +106,6 @@
 }
 
 .bubble-name {
-    -fx-font-size: 9px;
     -fx-text-fill: #5C6370;
     -fx-wrap-text: false;
 }
@@ -129,17 +121,14 @@
 }
 .avatar-initial {
     -fx-text-fill: white;
-    -fx-font-size: 11px;
     -fx-font-weight: 600;
 }
 .avatar-placeholder {
     -fx-text-fill: white;
-    -fx-font-size: 11px;
     -fx-font-weight: 600;
 }
 
 .bubble-time {
-    -fx-font-size: 8px;
     -fx-text-fill: #B4BCCC;
 }
 
@@ -153,7 +142,6 @@
     -fx-alignment: center-left;
 }
 .member-list-title {
-    -fx-font-size: 13px;
     -fx-font-weight: bold;
     -fx-text-fill: #1565C0;
 }
@@ -165,7 +153,6 @@
     -fx-padding: 10 6 10 6;
 }
 .member-list-count {
-    -fx-font-size: 10px;
     -fx-text-fill: #909399;
 }
 .member-list-scroll {
@@ -180,12 +167,10 @@
     -fx-padding: 2 2 4 2;
 }
 .member-name {
-    -fx-font-size: 11px;
     -fx-text-fill: #5C6370;
     -fx-wrap-text: false;
 }
 .member-list-add-kelsy, .member-list-remove-kelsy {
-    -fx-font-size: 10px;
     -fx-padding: 1 4 1 4;
     -fx-background-color: transparent;
     -fx-text-fill: #1565C0;
@@ -224,7 +209,6 @@
     -fx-background-radius: 16 16 16 16;
     -fx-background-color: #F2F6FA;
     -fx-padding: 4 8 4 8;
-    -fx-font-size: 11px;
 }
 
 .input-bar .send-active {
@@ -235,7 +219,6 @@
     -fx-background-color: #EEF3FB;
     -fx-text-fill: #1565C0;
     -fx-background-radius: 10;
-    -fx-font-size: 11px;
     -fx-padding: 3 8 3 8;
     -fx-cursor: hand;
 }
@@ -249,9 +232,9 @@
 .md-h1, .md-h2, .md-h3 {
     -fx-text-fill: #212121;
 }
-.md-h1 { -fx-font-size: 16px; -fx-font-weight: bold; }
-.md-h2 { -fx-font-size: 14px; -fx-font-weight: bold; }
-.md-h3 { -fx-font-size: 13px; -fx-font-weight: bold; }
+.md-h1 { -fx-font-weight: bold; }
+.md-h2 { -fx-font-weight: bold; }
+.md-h3 { -fx-font-weight: bold; }
 .md-code {
     -fx-font-family: monospace;
     -fx-background-color: #F4F4F5;
@@ -278,15 +261,12 @@
     -fx-border-color: #D4D4D8;
     -fx-border-radius: 8;
     -fx-border-width: 1;
-    -fx-font-size: 11px;
 }
 .tool-card-label {
     -fx-text-fill: #3F3F46;
-    -fx-font-size: 11px;
 }
 .tool-card .hyperlink {
     -fx-text-fill: #1565C0;
-    -fx-font-size: 11px;
 }
 .knowledge-pane {
     -fx-background-color: #FFFFFF;
@@ -296,7 +276,6 @@
 }
 
 .knowledge-source {
-    -fx-font-size: 11px;
     -fx-text-fill: #1565C0;
 }
 
@@ -324,13 +303,11 @@
 }
 
 .thinking-title {
-    -fx-font-size: 10px;
     -fx-font-weight: bold;
     -fx-text-fill: #52525B;
 }
 
 .thinking-body {
-    -fx-font-size: 11px;
     -fx-text-fill: #3F3F46;
 }
 
@@ -361,7 +338,6 @@
 }
 
 .mention-name {
-    -fx-font-size: 12px;
     -fx-text-fill: #1F2329;
 }
 
