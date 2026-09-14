@@ -393,6 +393,7 @@
                                         <argument>--java-options</argument><argument>-Xmx512m</argument>
                                         <argument>--java-options</argument><argument>--add-modules=javafx.controls,javafx.fxml,javafx.web,javafx.swing,javafx.media,javafx.graphics,javafx.base</argument>
                                         <argument>--java-options</argument><argument>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</argument>
+                                        <argument>--java-options</argument><argument>-Dfile.encoding=GBK</argument>
                                         <argument>--install-dir</argument><argument>Kelly</argument>
                                         <argument>--win-dir-chooser</argument>
                                         <argument>--win-menu</argument>

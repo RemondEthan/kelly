@@ -104,6 +104,10 @@ public final class TrayManager {
     }
 
     private PopupMenu buildMenu(Stage stage) {
+        // 中文 Windows 上 AWT 走 ANSI native API (AppendMenuA)，
+        // 依赖 Charset.defaultCharset() 与系统 ANSI 代码页一致才能正常显示。
+        // pom.xml win profile 已加 -Dfile.encoding=GBK 兜底中文区域。
+        // 英文 / 日文等其它 ANSI 代码页区域仍会乱码；根治需用 JNA 走 AppendMenuW。
         PopupMenu menu = new PopupMenu();
 
         MenuItem openItem = new MenuItem("打开 Kelly");
