@@ -42,6 +42,7 @@ public class ChatPane extends StackPane {
         InputBar input = new InputBar(
                 controller::send,
                 controller::secretaryNickname,
+                controller::sendImage,
                 controller.getMembers(),
                 (member, name) -> member.isKelsy()
                         ? controller.avatarOfSecretary()

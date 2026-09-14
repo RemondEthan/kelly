@@ -26,7 +26,12 @@ import com.mordor.kelly.model.Sender;
 import com.mordor.kelly.service.AvatarService;
 import com.mordor.kelly.service.ChatHistory;
 import com.mordor.kelly.service.CryptoService;
+import com.mordor.kelly.service.ImageAssembler;
+import com.mordor.kelly.service.ImageDraft;
+import com.mordor.kelly.service.ImageWire;
 import com.mordor.kelly.service.ImClient;
+import com.mordor.kelly.service.MediaStore;
+import com.mordor.kelly.service.PreviewJpeg;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.IntegerBinding;
@@ -39,6 +44,7 @@ import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
 import javafx.scene.image.Image;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -62,6 +68,10 @@ public class ChatController {
 
     public interface PeerSender {
         void sendChat(String text) throws Exception;
+
+        default void sendImagePayload(String metaPlaintext, List<String> chunkPlaintexts) throws Exception {
+            throw new IllegalStateException("图片发送未接入");
+        }
     }
 
     private final AppState state;
@@ -69,6 +79,9 @@ public class ChatController {
     private final String username;
     private final ChatHistory history;
     private final PeerSender peerSender;
+    private final MediaStore mediaStore;
+    private final Map<String, ImageAssembler> incomingImages = new LinkedHashMap<>();
+    private final Map<String, ImageWire.Meta> incomingMeta = new LinkedHashMap<>();
     private final KelsyRoomSettings settings;
     private KelsyRuntime runtime;
     private final AtomicBoolean kelsyBusy = new AtomicBoolean();
@@ -112,6 +125,7 @@ public class ChatController {
         this.offline = state.offline();
         this.username = state.username();
         this.history = history;
+        this.mediaStore = MediaStore.defaultStore();
         this.settings = new KelsyRoomSettings();
         this.runtime = null;
         if (state.offline()) {
@@ -121,7 +135,17 @@ public class ChatController {
             };
         } else {
             this.imCode = state.client().imCode();
-            this.peerSender = state.client()::sendChat;
+            this.peerSender = new PeerSender() {
+                @Override
+                public void sendChat(String text) {
+                    state.client().sendChat(text);
+                }
+
+                @Override
+                public void sendImagePayload(String metaPlaintext, List<String> chunkPlaintexts) {
+                    state.client().sendImage(metaPlaintext, chunkPlaintexts);
+                }
+            };
             state.client().addListener(event -> {
                 Diagnostics.log("chat", "queue %s fx=%s", eventName(event), Platform.isFxApplicationThread());
                 Platform.runLater(() -> {
@@ -157,11 +181,18 @@ public class ChatController {
     ChatController(String imCode, String username, ChatHistory history,
                    PeerSender peerSender, KelsyRoomSettings settings, KelsyRuntime runtime,
                    boolean offline) {
+        this(imCode, username, history, peerSender, settings, runtime, offline, MediaStore.defaultStore());
+    }
+
+    ChatController(String imCode, String username, ChatHistory history,
+                   PeerSender peerSender, KelsyRoomSettings settings, KelsyRuntime runtime,
+                   boolean offline, MediaStore mediaStore) {
         this.state = null;
         this.imCode = imCode;
         this.username = username;
         this.history = history;
         this.peerSender = peerSender;
+        this.mediaStore = mediaStore == null ? MediaStore.defaultStore() : mediaStore;
         this.settings = settings;
         this.runtime = runtime;
         this.offline = offline;
@@ -292,6 +323,8 @@ public class ChatController {
 
     public static final String BUSY_HINT = "秘书还在回复";
     public static final String OFFLINE_REJECT_HINT = "脱机登录，消息无法发送";
+    public static final String IMAGE_TOO_LARGE_HINT = "图片超过 20MB，无法发送";
+    public static final String IMAGE_BAD_HINT = "无法处理这张图片";
     public static final String OFFLINE_IM_CODE = "__offline__";
     public static final String OFFLINE_ARCHIVE_PASSWORD = "offline";
 
@@ -332,6 +365,64 @@ public class ChatController {
                 yield SendResult.ok();
             }
         };
+    }
+
+    public SendResult sendImage(ImageDraft draft) {
+        if (draft == null || draft.bytes().length == 0) {
+            return SendResult.reject(IMAGE_BAD_HINT);
+        }
+        if (!ImageWire.acceptableSize(draft.bytes().length)) {
+            return SendResult.reject(IMAGE_TOO_LARGE_HINT);
+        }
+        if (offline()) {
+            return SendResult.reject(OFFLINE_REJECT_HINT);
+        }
+        try {
+            byte[] preview = PreviewJpeg.encode(draft.bytes());
+            String mediaId = UUID.randomUUID().toString();
+            MediaStore.Stored stored = mediaStore.save(imCode, mediaId, draft.bytes(), draft.mime(), preview);
+            ImageWire.Meta meta = new ImageWire.Meta(
+                    1,
+                    mediaId,
+                    draft.caption(),
+                    draft.mime(),
+                    draft.bytes().length,
+                    ImageWire.sha256Hex(draft.bytes()),
+                    ImageWire.b64(preview));
+            List<byte[]> parts = ImageWire.split(draft.bytes());
+            List<String> chunks = new ArrayList<>();
+            for (int i = 0; i < parts.size(); i++) {
+                chunks.add(ImageWire.encodeChunk(new ImageWire.Chunk(
+                        mediaId, i, parts.size(), ImageWire.b64(parts.get(i)))));
+            }
+            peerSender.sendImagePayload(ImageWire.encodeMeta(meta), chunks);
+            followingLatest = true;
+            noMoreOlder = false;
+            addMessage(Message.image(
+                    mediaId,
+                    Sender.SELF,
+                    draft.caption(),
+                    LocalDateTime.now(),
+                    username,
+                    mediaId,
+                    stored.previewRel(),
+                    stored.originalRel()));
+            return SendResult.ok();
+        } catch (Exception e) {
+            addSystem("发送失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+            return SendResult.ok();
+        }
+    }
+
+    public Path mediaFile(String rel) {
+        if (rel == null || rel.isBlank()) {
+            return null;
+        }
+        return mediaStore.resolve(imCode, rel);
+    }
+
+    public Path mediaDir() {
+        return mediaStore.dir(imCode);
     }
 
     public String secretaryNickname() {
@@ -742,6 +833,10 @@ public class ChatController {
                             plaintext,
                             LocalDateTime.now(),
                             username));
+            case ImClient.Event.Image(String username, String plaintext) ->
+                    onPeerImage(username, plaintext);
+            case ImClient.Event.ImageChunk(String username, String plaintext) ->
+                    onPeerImageChunk(plaintext);
             case ImClient.Event.PeerJoined(int userId, String username) -> {
                 lastSeenIds.put(username, userId);
                 boolean firstSeen = peers.put(userId, username) == null;
@@ -823,7 +918,54 @@ public class ChatController {
             case ImClient.Event.Registered(int userId, String ignored) -> "Registered(" + userId + ")";
             case ImClient.Event.PeerAvatar(int userId, String username, byte[] png) ->
                     "PeerAvatar(" + userId + "," + username + ",len=" + png.length + ")";
+            case ImClient.Event.Image(String username, String plaintext) ->
+                    "Image(" + username + ",len=" + plaintext.length() + ")";
+            case ImClient.Event.ImageChunk(String username, String plaintext) ->
+                    "ImageChunk(" + username + ",len=" + plaintext.length() + ")";
         };
+    }
+
+    private void onPeerImage(String username, String plaintext) {
+        try {
+            ImageWire.Meta meta = ImageWire.parseMeta(plaintext);
+            byte[] jpeg = ImageWire.unb64(meta.previewJpeg());
+            mediaStore.writePreview(imCode, meta.id(), jpeg);
+            incomingMeta.put(meta.id(), meta);
+            addMessage(Message.image(
+                    meta.id(),
+                    Sender.PEER,
+                    meta.caption(),
+                    LocalDateTime.now(),
+                    username,
+                    meta.id(),
+                    MediaStore.previewName(meta.id()),
+                    MediaStore.originalName(meta.id(), meta.mime())));
+        } catch (Exception e) {
+            Diagnostics.warn("chat", "peer image meta failed: %s", e.toString());
+        }
+    }
+
+    private void onPeerImageChunk(String plaintext) {
+        try {
+            ImageWire.Chunk chunk = ImageWire.parseChunk(plaintext);
+            ImageAssembler asm = incomingImages.computeIfAbsent(
+                    chunk.id(), id -> new ImageAssembler(Math.max(1, chunk.n())));
+            if (!asm.offer(chunk.i(), ImageWire.unb64(chunk.data()))) {
+                return;
+            }
+            incomingImages.remove(chunk.id());
+            ImageWire.Meta meta = incomingMeta.remove(chunk.id());
+            byte[] original = asm.bytes();
+            if (meta != null && !meta.sha256().equals(ImageWire.sha256Hex(original))) {
+                Diagnostics.warn("chat", "peer image sha mismatch id=%s", chunk.id());
+                return;
+            }
+            String mime = meta == null ? "image/png" : meta.mime();
+            mediaStore.writePart(imCode, chunk.id(), original);
+            mediaStore.commitOriginal(imCode, chunk.id(), mime);
+        } catch (Exception e) {
+            Diagnostics.warn("chat", "peer image chunk failed: %s", e.toString());
+        }
     }
 
     void onHistoryLoaded(List<Message> loaded) {

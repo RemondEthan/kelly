@@ -72,6 +72,19 @@ class ProtocolTest {
     }
 
     @Test
+    void imageAndChunkEnvelope() {
+        String image = Protocol.image("meta-cipher", "Alice");
+        Protocol.Incoming img = Protocol.parse(image);
+        assertEquals("image", img.type());
+        assertEquals("meta-cipher", img.content());
+        assertEquals("Alice", img.username());
+        Protocol.Incoming chunk = Protocol.parse(Protocol.imageChunk("part", "Bob"));
+        assertEquals("image_chunk", chunk.type());
+        assertEquals("part", chunk.content());
+        assertEquals("Bob", chunk.username());
+    }
+
+    @Test
     void parseError() {
         Protocol.Incoming msg = Protocol.parse(
                 "{\"type\":\"error\",\"data\":{\"message\":\"Room is full (max 10 users)\"}}");

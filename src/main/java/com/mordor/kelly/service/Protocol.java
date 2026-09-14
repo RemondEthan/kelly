@@ -35,7 +35,19 @@ public final class Protocol {
     }
 
     public static String text(String content, String username) {
-        return "{\"type\":\"text\",\"data\":{\"content\":"
+        return typed("text", content, username);
+    }
+
+    public static String image(String content, String username) {
+        return typed("image", content, username);
+    }
+
+    public static String imageChunk(String content, String username) {
+        return typed("image_chunk", content, username);
+    }
+
+    private static String typed(String type, String content, String username) {
+        return "{\"type\":" + quote(type) + ",\"data\":{\"content\":"
                 + quote(content) + ",\"username\":" + quote(username) + "}}";
     }
 
@@ -163,7 +175,7 @@ public final class Protocol {
         return null;
     }
 
-    private static int intField(String json, String key) {
+    static int intField(String json, String key) {
         int start = indexOfKey(json, key);
         if (start < 0) {
             return 0;

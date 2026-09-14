@@ -8,7 +8,9 @@ import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +39,8 @@ public final class ImClient implements WebSocket.Listener {
         record Closed(String reason) implements Event {}
         record DecryptFailed(String username) implements Event {}
         record PeerAvatar(int userId, String username, byte[] png) implements Event {}
+        record Image(String username, String plaintext) implements Event {}
+        record ImageChunk(String username, String plaintext) implements Event {}
     }
 
     private final SavedUserIdService savedUserIds;
@@ -136,7 +140,17 @@ public final class ImClient implements WebSocket.Listener {
     }
 
     public void sendChat(String plaintext) {
-        sendEncrypted(plaintext);
+        sendEncrypted("text", plaintext);
+    }
+
+    public void sendImage(String metaPlaintext, List<String> chunkPlaintexts) {
+        sendEncrypted("image", metaPlaintext);
+        if (chunkPlaintexts == null) {
+            return;
+        }
+        for (String chunk : chunkPlaintexts) {
+            sendEncrypted("image_chunk", chunk);
+        }
     }
 
     public void close() {
@@ -273,6 +287,8 @@ public final class ImClient implements WebSocket.Listener {
                     emit(new Event.DecryptFailed(msg.username()));
                 }
             }
+            case "image" -> handleEncrypted(msg, Event.Image::new);
+            case "image_chunk" -> handleEncrypted(msg, Event.ImageChunk::new);
             case "peer_connected" -> {
                 roster.put(msg.userId(), msg.username());
                 emit(new Event.PeerJoined(msg.userId(), msg.username()));
@@ -328,11 +344,29 @@ public final class ImClient implements WebSocket.Listener {
         return WebSocket.Listener.super.onPong(webSocket, message);
     }
 
-    private void sendEncrypted(String plaintext) {
+    private void handleEncrypted(Protocol.Incoming msg, BiFunction<String, String, Event> factory) {
+        if (!crypto.isReady()) {
+            Diagnostics.warn("ws", "drop %s, crypto not ready", msg.type());
+            return;
+        }
+        try {
+            String plain = crypto.decrypt(msg.content());
+            emit(factory.apply(msg.username(), plain));
+        } catch (CryptoService.CryptoException e) {
+            emit(new Event.DecryptFailed(msg.username()));
+        }
+    }
+
+    private void sendEncrypted(String type, String plaintext) {
         if (!registered || !crypto.isReady()) {
             throw new IllegalStateException("尚未注册成功");
         }
-        String payload = Protocol.text(crypto.encrypt(plaintext), username);
+        String cipher = crypto.encrypt(plaintext);
+        String payload = switch (type) {
+            case "image" -> Protocol.image(cipher, username);
+            case "image_chunk" -> Protocol.imageChunk(cipher, username);
+            default -> Protocol.text(cipher, username);
+        };
         enqueueSend(payload, true);
     }
 
@@ -367,7 +401,7 @@ public final class ImClient implements WebSocket.Listener {
             try {
                 if (registered) {
                     sendPing();
-                    sendEncrypted(KEEPALIVE);
+                    sendEncrypted("text", KEEPALIVE);
                 }
             } catch (Exception ignored) {
                 // 保活失败由关闭回调处理

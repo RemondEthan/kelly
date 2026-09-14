@@ -65,7 +65,7 @@ final class UnreadAlert {
     void watch(ImClient client) {
         clear();
         client.addListener(event -> {
-            if (event instanceof ImClient.Event.Chat) {
+            if (event instanceof ImClient.Event.Chat || event instanceof ImClient.Event.Image) {
                 Platform.runLater(this::onIncoming);
             }
         });

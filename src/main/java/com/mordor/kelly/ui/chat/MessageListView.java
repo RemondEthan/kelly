@@ -164,7 +164,9 @@ public class MessageListView extends ScrollPane {
         AppState s = controller.getState();
         String peer = (m.from() != null && !m.from().isBlank()) ? m.from() : s.peerName();
         return new MessageBubble(m, s.username(), peer, controller.avatarOf(m.from()),
-                s.avatar(), bubbleMaxWidth());
+                s.avatar(), bubbleMaxWidth(),
+                controller.mediaFile(m.previewRel()),
+                controller.mediaFile(m.originalRel()));
     }
 
     private AssistantBubble newAssistantBubble(AssistantMessage msg) {

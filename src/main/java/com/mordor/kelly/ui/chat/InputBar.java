@@ -1,11 +1,22 @@
 package com.mordor.kelly.ui.chat;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.nio.IntBuffer;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 import com.mordor.kelly.kelsy.KelsyMention;
 import com.mordor.kelly.model.RoomMember;
+import com.mordor.kelly.service.ImageDraft;
+import com.mordor.kelly.service.PasteImage;
 import javafx.animation.PauseTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -15,29 +26,36 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelFormat;
+import javafx.scene.image.PixelReader;
+import javafx.scene.image.WritablePixelFormat;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.materialdesign2.MaterialDesignP;
 import org.kordamp.ikonli.materialdesign2.MaterialDesignS;
 
-/**
- * 聊天输入栏：附件按钮 + 文本输入框 + 表情按钮 + 发送按钮。
- *
- * HBox 横向排列 4 个元素：附件 | 输入框 | 表情 | 发送。
- * 文本框占据所有剩余空间（Hgrow=ALWAYS），按钮固定大小。
- */
-public class InputBar extends HBox {
+import javax.imageio.ImageIO;
 
-    // 文本框（消息内容）和发送按钮在整个生命周期内都需要引用，所以提为字段
+/**
+ * 聊天输入栏：可选图片草稿 + 附件 + 文本 + 表情 + 发送。
+ */
+public class InputBar extends VBox {
+
     private final TextField textField;
     private final Button sendBtn;
     private final Label hint = new Label();
     private final PauseTransition hideHint = new PauseTransition(Duration.seconds(3));
+    private final HBox draftRow = new HBox(8);
+    private final ImageView draftThumb = new ImageView();
+    private ImageDraft draft;
 
-    // 表情弹窗组件，按表情按钮时弹出
     private final EmojiPopover emojiPopover;
     private final Supplier<String> secretaryNickname;
     private final ObservableList<RoomMember> members;
@@ -45,29 +63,48 @@ public class InputBar extends HBox {
 
     public InputBar(Function<String, ChatController.SendResult> onSend,
                     Supplier<String> secretaryNickname) {
-        this(onSend, secretaryNickname, FXCollections.observableArrayList(), (m, n) -> null);
+        this(onSend, secretaryNickname, draft -> ChatController.SendResult.reject(null),
+                FXCollections.observableArrayList(), (m, n) -> null);
     }
 
     public InputBar(Function<String, ChatController.SendResult> onSend,
                     Supplier<String> secretaryNickname,
                     ObservableList<RoomMember> members,
                     BiFunction<RoomMember, String, Image> avatarOf) {
-        super(6);  // HBox 子节点之间水平间距 6px
+        this(onSend, secretaryNickname, draft -> ChatController.SendResult.reject(null),
+                members, avatarOf);
+    }
+
+    public InputBar(Function<String, ChatController.SendResult> onSend,
+                    Supplier<String> secretaryNickname,
+                    Function<ImageDraft, ChatController.SendResult> onSendImage,
+                    ObservableList<RoomMember> members,
+                    BiFunction<RoomMember, String, Image> avatarOf) {
+        super(4);
         this.secretaryNickname = secretaryNickname == null
                 ? () -> RoomMember.SECRETARY_NAME : secretaryNickname;
         getStyleClass().add("input-bar");
-        setAlignment(Pos.CENTER_LEFT);  // 子节点垂直居中、水平靠左
+        setAlignment(Pos.CENTER_LEFT);
 
-        // ---- 附件按钮：用 Material Design 图标库的回形针图标 ----
+        draftRow.getStyleClass().add("image-draft");
+        draftRow.setAlignment(Pos.CENTER_LEFT);
+        draftThumb.setFitHeight(56);
+        draftThumb.setFitWidth(80);
+        draftThumb.setPreserveRatio(true);
+        Button clearDraft = new Button();
+        clearDraft.setText("×");
+        clearDraft.setOnAction(e -> setDraft(null));
+        Label draftHint = new Label("截图草稿，发送后传给对方");
+        draftRow.getChildren().addAll(draftThumb, draftHint, clearDraft);
+        hideDraft();
+
         Button attach = new Button();
-        // FontIcon：ikonli 包提供的图标节点，setGraphic 把图标放进 Button
         attach.setGraphic(new FontIcon(MaterialDesignP.PAPERCLIP));
         attach.setOnAction(e -> showAttachStub());
 
-        // ---- 发送按钮（先创建并禁用，因为还没输入内容）----
         sendBtn = new Button();
         sendBtn.setGraphic(new FontIcon(MaterialDesignS.SEND));
-        sendBtn.setDisable(true);  // 初始禁用：空文本不能发送
+        sendBtn.setDisable(true);
 
         hint.getStyleClass().add("kelsy-busy-hint");
         hint.setVisible(false);
@@ -77,15 +114,10 @@ public class InputBar extends HBox {
             hint.setManaged(false);
         });
 
-        // ---- 文本输入框 ----
         textField = new TextField();
         textField.setPromptText("输入消息...");
-        // setOnAction：按回车键时触发，相当于"提交"
-        textField.setOnAction(e -> send(onSend));
-        // 监听文本变化：空文本时禁用发送按钮，否则启用
-        textField.textProperty().addListener((obs, o, n) ->
-                sendBtn.setDisable(n == null || n.isBlank()));
-        // setHgrow：让 textField 占据所有剩余水平空间
+        textField.setOnAction(e -> send(onSend, onSendImage));
+        textField.textProperty().addListener((obs, o, n) -> refreshSendEnabled());
         HBox.setHgrow(textField, Priority.ALWAYS);
 
         this.members = members == null ? FXCollections.observableArrayList() : members;
@@ -95,10 +127,19 @@ public class InputBar extends HBox {
         textField.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (mentionPopover.handleKey(e)) {
                 e.consume();
+                return;
+            }
+            if (e.getCode() == KeyCode.V && e.isShortcutDown()) {
+                if (tryPasteImage()) {
+                    e.consume();
+                }
+            }
+            if (e.getCode() == KeyCode.ESCAPE && draft != null) {
+                setDraft(null);
+                e.consume();
             }
         });
 
-        // ---- 表情按钮 ----
         Button emoji = new Button();
         emoji.setGraphic(EmojiImages.view("😊", 18));
         emoji.setStyle("-fx-background-color: transparent; -fx-cursor: hand;");
@@ -108,32 +149,130 @@ public class InputBar extends HBox {
             emojiPopover.show(emoji);
         });
 
-        // 发送按钮的点击事件（创建完 textField 后再绑定，避免引用顺序问题）
-        sendBtn.setOnAction(e -> send(onSend));
+        sendBtn.setOnAction(e -> send(onSend, onSendImage));
 
-        // 按顺序加入 HBox：附件 → 文本框 → 表情 → 发送 → 忙碌提示
-        getChildren().addAll(attach, textField, emoji, sendBtn, hint);
+        HBox editor = new HBox(6);
+        editor.setAlignment(Pos.CENTER_LEFT);
+        editor.getChildren().addAll(attach, textField, emoji, sendBtn, hint);
+        getChildren().addAll(draftRow, editor);
     }
 
-    // 把当前文本发出去；空文本则忽略；拒绝时保留输入并按 hint 提示
-    private void send(Function<String, ChatController.SendResult> onSend) {
+    private void send(Function<String, ChatController.SendResult> onSend,
+                      Function<ImageDraft, ChatController.SendResult> onSendImage) {
+        if (draft != null) {
+            ImageDraft payload = new ImageDraft(draft.bytes(), draft.mime(), textField.getText());
+            ChatController.SendResult result = onSendImage.apply(payload);
+            if (result == null || !result.accepted()) {
+                showHint(result);
+                return;
+            }
+            setDraft(null);
+            clear();
+            mentionPopover.hide();
+            return;
+        }
         String text = textField.getText();
         if (text == null || text.isBlank()) {
             return;
         }
         ChatController.SendResult result = onSend.apply(text);
         if (result == null || !result.accepted()) {
-            if (result != null && result.hint() != null && !result.hint().isBlank()) {
-                hint.setText(result.hint());
-                hint.setVisible(true);
-                hint.setManaged(true);
-                hideHint.stop();
-                hideHint.playFromStart();
-            }
+            showHint(result);
             return;
         }
         clear();
         mentionPopover.hide();
+    }
+
+    private void showHint(ChatController.SendResult result) {
+        if (result != null && result.hint() != null && !result.hint().isBlank()) {
+            hint.setText(result.hint());
+            hint.setVisible(true);
+            hint.setManaged(true);
+            hideHint.stop();
+            hideHint.playFromStart();
+        }
+    }
+
+    private boolean tryPasteImage() {
+        Clipboard cb = Clipboard.getSystemClipboard();
+        Optional<byte[]> raw = Optional.empty();
+        if (cb.hasImage()) {
+            byte[] png = pngFromFx(cb.getImage());
+            if (png != null) {
+                raw = Optional.of(png);
+            }
+        }
+        List<Path> files = new ArrayList<>();
+        if (cb.hasFiles()) {
+            for (File file : cb.getFiles()) {
+                files.add(file.toPath());
+            }
+        }
+        Optional<PasteImage.Accepted> accepted = PasteImage.resolve(raw, files, cb.hasString());
+        if (accepted.isEmpty()) {
+            if (cb.hasImage() || hasImageFile(files)) {
+                showHint(ChatController.SendResult.reject(ChatController.IMAGE_TOO_LARGE_HINT));
+                return true;
+            }
+            return false;
+        }
+        setDraft(new ImageDraft(accepted.get().bytes(), accepted.get().mime(), textField.getText()));
+        return true;
+    }
+
+    private static boolean hasImageFile(List<Path> files) {
+        return PasteImage.resolve(Optional.empty(), files, false).isPresent()
+                || files.stream().anyMatch(p -> p.getFileName().toString().matches("(?i).*\\.(png|jpe?g|gif|webp)"));
+    }
+
+    private void setDraft(ImageDraft next) {
+        this.draft = next;
+        if (next == null) {
+            hideDraft();
+        } else {
+            draftThumb.setImage(new Image(new ByteArrayInputStream(next.bytes())));
+            draftRow.setVisible(true);
+            draftRow.setManaged(true);
+        }
+        refreshSendEnabled();
+    }
+
+    private void hideDraft() {
+        draftRow.setVisible(false);
+        draftRow.setManaged(false);
+        draftThumb.setImage(null);
+    }
+
+    private void refreshSendEnabled() {
+        String n = textField.getText();
+        sendBtn.setDisable(draft == null && (n == null || n.isBlank()));
+    }
+
+    static byte[] pngFromFx(Image img) {
+        if (img == null || img.getWidth() <= 0 || img.getHeight() <= 0) {
+            return null;
+        }
+        int w = (int) Math.round(img.getWidth());
+        int h = (int) Math.round(img.getHeight());
+        PixelReader reader = img.getPixelReader();
+        if (reader == null) {
+            return null;
+        }
+        WritablePixelFormat<IntBuffer> fmt = PixelFormat.getIntArgbInstance();
+        int[] pix = new int[w * h];
+        reader.getPixels(0, 0, w, h, fmt, pix, 0, w);
+        BufferedImage buf = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        buf.setRGB(0, 0, w, h, pix, 0, w);
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            if (!ImageIO.write(buf, "png", out)) {
+                return null;
+            }
+            return out.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void refreshMention() {
@@ -166,14 +305,12 @@ public class InputBar extends HBox {
         textField.requestFocus();
     }
 
-    // 文件传输的占位提示：当前 demo 阶段没实现真实附件
     private void showAttachStub() {
-        // Alert：模态对话框（INFORMATION 风格）
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("提示");
         alert.setHeaderText(null);
         alert.setContentText("文件传输未实现（demo 模式）");
-        alert.showAndWait();  // 显示并阻塞等待用户关闭
+        alert.showAndWait();
     }
 
     public String getText() {
