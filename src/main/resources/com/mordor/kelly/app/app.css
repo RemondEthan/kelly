@@ -17,3 +17,8 @@
 .app-bg {
     -fx-background-color: #F5F8FF;
 }
+
+/* Ikonli 图标字体：确保 CSS 继承不会覆盖 Ikonli 的 programmatic setFont() */
+.ikonli-font-icon {
+    -fx-font-family: "Material Design Icons";
+}

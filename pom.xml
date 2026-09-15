@@ -12,6 +12,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.2</junit.version>
+        <app.version>1.0.0</app.version>
         <!-- AgentScope 是自动模块，不能打进 jlink；jpackage 用运行时镜像 + classpath -->
         <jpackage.input>${project.build.directory}/jpackage-input</jpackage.input>
         <jlink.image>${project.build.directory}/kelly-runtime</jlink.image>

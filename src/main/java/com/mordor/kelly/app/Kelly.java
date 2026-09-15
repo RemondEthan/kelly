@@ -10,6 +10,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.layout.StackPane;
+import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
 /**
@@ -65,6 +66,11 @@ public class Kelly extends Application {
         this.stage = stage;
         this.root = new StackPane();
         root.getStyleClass().add("app-bg");
+
+        // 预加载 Ikonli Material Design 字体，避免 Windows 上字体加载失败导致图标乱码
+        Font.loadFont(getClass().getResourceAsStream(
+                "/META-INF/resources/materialdesignicons2/5.8.55/fonts/materialdesignicons-webfont.ttf"), 0);
+
         showLogin();
 
         // 创建场景，设置固定尺寸，加载全局样式表

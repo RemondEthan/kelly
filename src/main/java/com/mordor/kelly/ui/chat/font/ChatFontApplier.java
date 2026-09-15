@@ -5,6 +5,7 @@ import javafx.scene.Parent;
 import javafx.scene.control.Labeled;
 import javafx.scene.control.TextInputControl;
 import javafx.scene.text.Text;
+import org.kordamp.ikonli.javafx.FontIcon;
 
 /**
  * 聊天字体应用器：遍历 JavaFX 场景图节点树，对所有文本节点应用字体设置。
@@ -62,6 +63,10 @@ public final class ChatFontApplier {
      */
     private static void walk(Node node, double factor) {
         try {
+            // 跳过 Ikonli FontIcon：图标字体的字号由 CSS/属性控制，不应被缩放
+            if (node instanceof FontIcon) {
+                return;
+            }
             if (node instanceof Labeled l && l.getFont() != null) {
                 // Labeled（Button、Label 等）：获取原始字号并缩放
                 double base = l.getFont().getSize();

@@ -154,6 +154,9 @@ public class InputBar extends VBox {
 
         textField = new TextField();
         textField.setPromptText("输入消息...");
+        // Windows 上默认字体不支持彩色 emoji，显式设置支持 emoji 的字体
+        // macOS/Linux 找不到该字体时自动回退系统默认，无副作用
+        textField.setStyle("-fx-font-family: 'Segoe UI Emoji', 'Segoe UI', sans-serif;");
         textField.setOnAction(e -> send(onSend, onSendImage));
         textField.textProperty().addListener((obs, o, n) -> refreshSendEnabled());
         HBox.setHgrow(textField, Priority.ALWAYS);
