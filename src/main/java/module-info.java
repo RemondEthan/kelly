@@ -45,6 +45,7 @@ module com.mordor.kelly {
     requires java.desktop;      // AWT/Swing：SystemTray 托盘图标、Taskbar 任务栏、Desktop 事件
     requires java.prefs;        // Java Preferences API：持久化登录配置、字体设置等用户偏好
     requires java.net.http;     // JDK 11+ HTTP 客户端：WebSocket 通信（ImClient 使用）
+    requires java.sql;          // JDBC：KnowledgeIndex 打开 sqlite-jdbc
 
     // ─── 序列化 ──────────────────────────────────────────────
     requires com.fasterxml.jackson.databind;  // Jackson JSON：解析 kelsy 配置文件（providers.json 等）

@@ -79,7 +79,10 @@ public record KnowledgeStore(Path workspace) {
      * @param line         匹配行号（1-indexed）
      * @param snippet      匹配行的摘要文本（截断到 120 字符）
      */
-    public record Hit(String relativePath, int line, String snippet) {
+    public record Hit(String relativePath, int line, String snippet, double score) {
+        public Hit(String relativePath, int line, String snippet) {
+            this(relativePath, line, snippet, 0);
+        }
     }
 
     /**
