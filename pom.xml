@@ -444,7 +444,7 @@
                                         <argument>--java-options</argument><argument>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</argument>
                                         <argument>--linux-shortcut</argument>
                                         <argument>--linux-menu-group</argument><argument>Utility</argument>
-                                        <argument>--linux-deb-maintainer</argument><argument>you@example.com</argument>
+                                        <argument>--linux-deb-maintainer</argument><argument>member86071@gmail.com</argument>
                                         <argument>--dest</argument><argument>${project.build.directory}/dist</argument>
                                     </arguments>
                                 </configuration>

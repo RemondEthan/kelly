@@ -254,6 +254,10 @@
     -fx-border-width: 0 0 0 3;
     -fx-padding: 0 0 0 8;
 }
+.md-list-prefix {
+    -fx-text-fill: #212121;
+    -fx-fill: #212121;
+}
 .tool-card {
     -fx-background-color: #F4F4F5;
     -fx-padding: 4 8 4 8;
@@ -375,4 +379,3 @@
 .bubble-image {
     -fx-padding: 6 8 6 8;
 }
-

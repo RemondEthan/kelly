@@ -192,6 +192,7 @@ public final class MarkdownView extends VBox {
             Label prefix = new Label(ordered ? i + ". " : "• ");
             prefix.setMinWidth(Region.USE_PREF_SIZE);
             prefix.setTextFill(INK);
+            prefix.getStyleClass().add("md-list-prefix");
             i++;
             VBox itemBody = new VBox(2);
             itemBody.setMinWidth(0);

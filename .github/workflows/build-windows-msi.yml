@@ -27,13 +27,20 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
+          TAG="$(echo "$TAG" | tr -d '[:space:]')"
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format from tag: $TAG"
+            exit 1
+          fi
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Set Maven version
-        run: mvn versions:set -DnewVersion=${{ steps.version.outputs.version }} -DgenerateBackupPoms=false
+        shell: bash
+        run: mvn versions:set -DnewVersion="${{ steps.version.outputs.version }}" -DgenerateBackupPoms=false
 
       - name: Build with Maven
-        run: mvn clean package -Pwin -DskipTests -Dapp.version=${{ steps.version.outputs.version }}
+        shell: bash
+        run: mvn clean package -Pwin -DskipTests -Dapp.version="${{ steps.version.outputs.version }}"
 
       - name: Upload MSI to Release
         uses: softprops/action-gh-release@v2
