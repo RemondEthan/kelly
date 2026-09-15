@@ -51,7 +51,8 @@ class WorkspaceSeederTest {
         assertTrue(Files.readString(skill).contains("澄清"));
         assertTrue(Files.readString(skill).contains("knowledge/meetings"));
         assertTrue(Files.readString(skill).contains("knowledge/todos"));
-        assertTrue(Files.readString(skill).contains("list_files knowledge/todos"));
+        assertTrue(Files.readString(skill).contains("已检索候选"));
+        assertTrue(Files.readString(skill).contains("knowledge_search"));
         assertTrue(Files.readString(skill).contains("状态：open"));
         assertTrue(Files.readString(skill).contains("- 原文："));
     }

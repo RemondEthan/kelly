@@ -7,7 +7,7 @@
  * <p>支持的命令：
  * <ul>
  *   <li><b>/note 内容</b> - 归档笔记：将内容按会议/决策卡片格式归档到知识库</li>
- *   <li><b>/today</b> - 今日汇总：用记忆搜索汇总今天已归档的工作</li>
+ *   <li><b>/today</b> - 今日汇总：按已检索候选汇总今天已归档的工作，不够再 knowledge_search</li>
  *   <li><b>/tidy</b> - 整理索引：整理 MEMORY.md，将流水记录迁移到卡片</li>
  *   <li><b>/find 关键词</b> - 知识搜索：在知识库中搜索相关内容</li>
  * </ul>
@@ -86,7 +86,7 @@ public final class SlashCommands {
                             + "KNOWLEDGE.md 加一行，再用 memory_save 写日记和 MEMORY.md 指针（必须带谁、主题词、别名、卡片路径）。"
                             + "不是会议/决定则仍按一条一事 memory_save。原文：\n" + rest);
             case "/today" -> Result.send(
-                    "请用 memory_search / memory_get 汇总今天已归档的工作，列出条目并注明来源路径。");
+                    "请根据本轮已检索候选汇总今天已归档的工作；不够再 knowledge_search。列出条目并注明来源路径。禁止使用内置记忆搜索。");
             case "/tidy" -> Result.send(
                     "MEMORY.md 可能过长。请按 AGENTS.md：把流水迁到卡片或专题页的短指针，"
                             + "指针须带谁、主题词、别名和路径。不删除 knowledge/meetings 或 decisions 里的卡片。"

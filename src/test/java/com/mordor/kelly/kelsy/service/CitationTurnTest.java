@@ -41,6 +41,7 @@ class CitationTurnTest {
         assertFalse(CitationTurn.isRetrievalTool("edit_file"));
         assertTrue(CitationTurn.isRetrievalTool("memory_get"));
         assertTrue(CitationTurn.isRetrievalTool("memory_search"));
+        assertTrue(CitationTurn.isRetrievalTool("knowledge_search"));
         assertTrue(CitationTurn.isRetrievalTool("read_file"));
         assertTrue(CitationTurn.isRetrievalTool("list_files"));
         CitationTurn t = new CitationTurn();

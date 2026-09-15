@@ -37,7 +37,8 @@ class SlashCommandsTest {
     void todayIgnoresTrailingText() {
         var r = SlashCommands.parse("/today extra");
         assertTrue(r.send());
-        assertTrue(r.outgoing().contains("memory_search"));
+        assertTrue(r.outgoing().contains("knowledge_search"));
+        assertFalse(r.outgoing().contains("memory_search"));
         assertFalse(r.outgoing().contains("extra"));
     }
 

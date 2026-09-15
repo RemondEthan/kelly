@@ -2,7 +2,7 @@
  * 引用轮次管理器。
  *
  * <p>跟踪一轮对话中 AI 助手引用了哪些知识库文件。
- * 当 AI 调用检索工具（如 memory_get、memory_search、read_file、list_files）时，
+ * 当 AI 调用检索工具（如 memory_get、memory_search、knowledge_search、read_file、list_files）时，
  * 此类负责提取被引用的文件路径，并在轮次结束时提交到"已展示"列表。
  *
  * <p>AI Agent 知识引用工作流程：
@@ -19,6 +19,7 @@
  * <ul>
  *   <li><b>memory_get</b> - 获取记忆内容</li>
  *   <li><b>memory_search</b> - 搜索记忆</li>
+ *   <li><b>knowledge_search</b> - 按 FTS 检索知识卡片</li>
  *   <li><b>read_file</b> - 读取文件内容</li>
  *   <li><b>list_files</b> - 列出目录文件</li>
  * </ul>
@@ -41,7 +42,7 @@ public final class CitationTurn {
 
     /** 检索类工具名称集合：这些工具的参数/结果中可能包含知识库路径 */
     private static final Set<String> RETRIEVAL = Set.of(
-            "memory_get", "memory_search", "read_file", "list_files");
+            "memory_get", "memory_search", "knowledge_search", "read_file", "list_files");
 
     /** 已提交的引用路径列表（本轮对话中确认引用的文件） */
     private final List<String> shown = new ArrayList<>();
