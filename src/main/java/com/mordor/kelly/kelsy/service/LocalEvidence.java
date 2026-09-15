@@ -25,6 +25,7 @@ package com.mordor.kelly.kelsy.service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public final class LocalEvidence {
 
@@ -32,6 +33,10 @@ public final class LocalEvidence {
     private static final List<String> STOPS = List.of(
             "最近有什么", "当时怎么定的", "怎么定的", "是谁", "请问", "一下",
             "我最近", "有什么", "当时", "最近", "我");
+
+    /** 回忆线索：相对时间、归档类型，或 ISO 年月 */
+    private static final Pattern RECALL = Pattern.compile(
+            "当时|会议|纪要|决定|待办|昨天|上周|上月|本月|半年前|去年|\\d{4}-\\d{2}");
 
     /** 私有构造函数，防止实例化 */
     private LocalEvidence() {
@@ -68,6 +73,16 @@ public final class LocalEvidence {
     }
 
     /**
+     * 判断文本是否带回忆线索（更宽松的检索阈值）。
+     *
+     * @param text 用户输入文本
+     * @return true 如果包含回忆关键词或 {@code yyyy-MM} 日期
+     */
+    public static boolean looksLikeRecall(String text) {
+        return text != null && RECALL.matcher(text).find();
+    }
+
+    /**
      * 从用户查询中提取搜索关键词。
      *
      * <p>处理流程：
@@ -96,6 +111,7 @@ public final class LocalEvidence {
         }
         return FindQuery.parse(q, LocalDate.now()).keywords().stream()
                 .filter(k -> k.length() >= 2)
+                .filter(k -> !k.equals("你好"))
                 .toList();
     }
 }

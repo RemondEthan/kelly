@@ -25,4 +25,11 @@ class LocalEvidenceTest {
         assertEquals(List.of("licence"), LocalEvidence.terms("licence怎么定的"));
         assertTrue(LocalEvidence.terms("我最近有什么会议").contains("会议"));
     }
+
+    @Test
+    void recallCues() {
+        assertTrue(LocalEvidence.looksLikeRecall("当时怎么定的"));
+        assertTrue(LocalEvidence.looksLikeRecall("2026-03 评审"));
+        assertFalse(LocalEvidence.looksLikeRecall("你好"));
+    }
 }
