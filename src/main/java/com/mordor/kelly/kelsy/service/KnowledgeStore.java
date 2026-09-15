@@ -325,16 +325,19 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) {
         if (index != null) {
             try {
                 index.reconcile();
-                List<Hit> hits = index.search(new FindQuery(null, null, needles), MAX_HITS);
                 Set<String> paths = new LinkedHashSet<>();
-                for (Hit hit : hits) {
-                    String path = hit.relativePath();
-                    if (path.equals("knowledge/KNOWLEDGE.md")) {
-                        continue;
-                    }
-                    paths.add(path);
-                    if (paths.size() >= MAX_HITS) {
-                        break;
+                // OR any needle: /find search() stays AND via FindQuery MATCH.
+                for (String needle : needles) {
+                    List<Hit> hits = index.search(
+                            new FindQuery(null, null, List.of(needle)), Integer.MAX_VALUE);
+                    for (Hit hit : hits) {
+                        if (!isKnowledgeCard(hit.relativePath())) {
+                            continue;
+                        }
+                        paths.add(hit.relativePath());
+                        if (paths.size() >= MAX_HITS) {
+                            return List.copyOf(paths);
+                        }
                     }
                 }
                 return List.copyOf(paths);
@@ -342,6 +345,11 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) {
             }
         }
         return scanCardsContaining(needles);
+    }
+
+    /** Same scope as {@link #scanCardsContaining}: knowledge cards, not the index file. */
+    private static boolean isKnowledgeCard(String path) {
+        return path.startsWith("knowledge/") && !path.equals("knowledge/KNOWLEDGE.md");
     }
 
     private List<String> scanCardsContaining(List<String> needles) {
@@ -368,7 +376,7 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) {
             return;
         }
         String rel = rel(path);
-        if (rel.equals("knowledge/KNOWLEDGE.md")) {
+        if (!isKnowledgeCard(rel)) {
             return;
         }
         String hay = rel;

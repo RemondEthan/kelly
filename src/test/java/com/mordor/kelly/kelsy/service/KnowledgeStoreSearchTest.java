@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -85,5 +86,32 @@ class KnowledgeStoreSearchTest {
         Files.writeString(dir.resolve("knowledge/meetings/2026-09-04-评审.md"), "# 会议\n");
         assertEquals(List.of("knowledge/meetings/2026-09-04-评审.md"),
                 store.cardPaths("knowledge/meetings"));
+    }
+
+    @Test
+    void cardsContainingSkipsMemoryFiles() throws Exception {
+        Files.createDirectories(dir.resolve("knowledge/people"));
+        Files.createDirectories(dir.resolve("memory"));
+        Files.writeString(dir.resolve("MEMORY.md"), "- 张三：长期合作\n");
+        Files.writeString(dir.resolve("memory/2026-03-15.md"), "- 与张三敲定评审方案\n");
+        Files.writeString(dir.resolve("knowledge/people/张三.md"), "# 张三\n- 角色：合作方\n");
+        var store = new KnowledgeStore(dir);
+        assertEquals(List.of("knowledge/people/张三.md"), store.cardsContaining(List.of("张三")));
+    }
+
+    @Test
+    void cardsContainingAnyNeedleAgreesOnFtsAndFallback() throws Exception {
+        Files.createDirectories(dir.resolve("knowledge/people"));
+        Files.createDirectories(dir.resolve("knowledge/meetings"));
+        Files.writeString(dir.resolve("knowledge/KNOWLEDGE.md"), "- 张三 评审\n");
+        Files.writeString(dir.resolve("knowledge/people/张三.md"), "# 张三\n- 角色：合作方\n");
+        Files.writeString(dir.resolve("knowledge/meetings/评审.md"), "# 评审\n- 结论：通过\n");
+        Files.writeString(dir.resolve("MEMORY.md"), "- 张三与评审\n");
+        var terms = List.of("张三", "评审");
+        var expected = Set.of("knowledge/people/张三.md", "knowledge/meetings/评审.md");
+        var fts = new KnowledgeStore(dir).cardsContaining(terms);
+        var fallback = new KnowledgeStore(dir, null).cardsContaining(terms);
+        assertEquals(expected, Set.copyOf(fts));
+        assertEquals(expected, Set.copyOf(fallback));
     }
 }
