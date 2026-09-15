@@ -59,6 +59,9 @@ public final class KelsyRuntime implements AutoCloseable {
     /** 当前活跃的助手服务实例（懒加载，首次调用 ensureAssistant 时创建） */
     private AssistantService assistant;
 
+    /** 缓存的用户知识库（每个运行时一条 SQLite 连接） */
+    private KnowledgeStore store;
+
     /** 运行时是否已关闭的标志位，关闭后不可再使用 */
     private boolean closed;
 
@@ -139,7 +142,7 @@ public final class KelsyRuntime implements AutoCloseable {
         return new KelsyRuntime(paths, factory);
     }
 
-    static void upgradeKnowledge(Path userRoot) {
+    public static void upgradeKnowledge(Path userRoot) {
         try (KnowledgeStore store = new KnowledgeStore(userRoot)) {
             if (store.index() != null) {
                 store.index().reconcile();
@@ -182,8 +185,16 @@ public final class KelsyRuntime implements AutoCloseable {
      * @param username 用户名
      * @return 该用户的 KnowledgeStore 实例
      */
-    public KnowledgeStore store(String username) {
-        return KnowledgeStore.forUser(paths.workspace(), username);
+    public synchronized KnowledgeStore store(String username) {
+        Path root = KnowledgeStore.knowledgeRoot(paths.workspace(), username);
+        if (store != null && store.workspace().equals(root)) {
+            return store;
+        }
+        if (store != null) {
+            store.close();
+        }
+        store = KnowledgeStore.forUser(paths.workspace(), username);
+        return store;
     }
 
     /**
@@ -242,6 +253,10 @@ public final class KelsyRuntime implements AutoCloseable {
         if (assistant != null) {
             assistant.close();
             assistant = null;
+        }
+        if (store != null) {
+            store.close();
+            store = null;
         }
     }
 }

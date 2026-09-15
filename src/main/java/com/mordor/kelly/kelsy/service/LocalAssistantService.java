@@ -85,15 +85,20 @@ public final class LocalAssistantService implements AssistantService {
     /** AgentScope 运行时上下文，包含会话和用户信息 */
     private final RuntimeContext context;
 
+    /** 与 {@link KnowledgeSearchTool} 共用的用户知识库（须在 {@link #close()} 关闭） */
+    private final KnowledgeStore store;
+
     /**
      * 私有构造函数，通过 {@link #create} 工厂方法创建。
      *
      * @param agent   HarnessAgent 实例
      * @param context 运行时上下文
+     * @param store   知识库（与 knowledge_search 同一实例）
      */
-    private LocalAssistantService(HarnessAgent agent, RuntimeContext context) {
+    private LocalAssistantService(HarnessAgent agent, RuntimeContext context, KnowledgeStore store) {
         this.agent = agent;
         this.context = context;
+        this.store = store;
     }
 
     /**
@@ -101,8 +106,8 @@ public final class LocalAssistantService implements AssistantService {
      *
      * <p>初始化流程：
      * <ol>
-     *   <li>播种工作空间模板文件（AGENTS.md、MEMORY.md 等）</li>
-     *   <li>播种用户知识库目录</li>
+     *   <li>播种共享工作空间模板，再播种用户知识库根</li>
+     *   <li>Harness 工作区指向用户知识根（与 FTS / memory 同一棵树）</li>
      *   <li>通过 {@link ModelFactory} 创建 AI 模型实例</li>
      *   <li>构建 HarnessAgent（配置名称、系统提示词、模型、安全限制等）</li>
      *   <li>创建 RuntimeContext（会话 ID + 用户 ID）</li>
@@ -114,8 +119,9 @@ public final class LocalAssistantService implements AssistantService {
      */
     public static LocalAssistantService create(KelsyConfig config, String userId) {
         Path workspace = config.workspacePath();
+        Path knowledgeRoot = KnowledgeStore.knowledgeRoot(workspace, userId);
         WorkspaceSeeder.seed(workspace);
-        WorkspaceSeeder.seed(KnowledgeStore.knowledgeRoot(workspace, userId));
+        WorkspaceSeeder.seed(knowledgeRoot);
         Model model = ModelFactory.create(config.model());
 
         ToolsConfig toolsConfig = new ToolsConfig();
@@ -124,7 +130,7 @@ public final class LocalAssistantService implements AssistantService {
                 .name("tars")
                 .sysPrompt(SYS_PROMPT)
                 .model(model)
-                .workspace(config.workspacePath())
+                .workspace(knowledgeRoot)
                 .toolsConfig(toolsConfig)
                 .disableShellTool()        // 禁用 Shell 命令执行（安全考虑）
                 .disableDynamicSkills()    // 禁用动态技能加载
@@ -132,7 +138,7 @@ public final class LocalAssistantService implements AssistantService {
                 .disableDynamicSubagents() // 禁用动态子代理
                 .maxIters(20)              // 限制最大迭代次数（防止无限循环）
                 .build();
-        KnowledgeStore store = KnowledgeStore.forUser(config.workspacePath(), userId);
+        KnowledgeStore store = new KnowledgeStore(knowledgeRoot);
         agent.getToolkit().registerAgentTool(new KnowledgeSearchTool(store));
 
         // 创建运行时上下文：固定会话 ID 确保跨重启延续
@@ -141,7 +147,7 @@ public final class LocalAssistantService implements AssistantService {
                 .userId(userId)
                 .build();
 
-        return new LocalAssistantService(agent, context);
+        return new LocalAssistantService(agent, context, store);
     }
 
     /**
@@ -168,7 +174,13 @@ public final class LocalAssistantService implements AssistantService {
      */
     @Override
     public void close() {
-        agent.close();
+        try {
+            agent.close();
+        } finally {
+            if (store != null) {
+                store.close();
+            }
+        }
     }
 
     /**

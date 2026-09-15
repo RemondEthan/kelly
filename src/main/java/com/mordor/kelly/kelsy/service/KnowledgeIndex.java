@@ -33,16 +33,35 @@ public final class KnowledgeIndex implements AutoCloseable {
         Path root = workspace.toAbsolutePath().normalize();
         Path db = root.resolve(".kelly-index.db");
         try {
-            Class.forName("org.sqlite.JDBC");
-            Connection conn = DriverManager.getConnection("jdbc:sqlite:" + db);
-            try (Statement s = conn.createStatement()) {
-                s.execute("PRAGMA journal_mode=WAL");
+            return connect(root, db);
+        } catch (ClassNotFoundException | SQLException first) {
+            deleteIndexFiles(root);
+            try {
+                return connect(root, db);
+            } catch (ClassNotFoundException | SQLException second) {
+                throw new UncheckedIOException(new IOException("failed to open knowledge index", second));
             }
-            KnowledgeIndex index = new KnowledgeIndex(root, conn);
-            index.ensureSchema();
-            return index;
-        } catch (ClassNotFoundException | SQLException e) {
-            throw new UncheckedIOException(new IOException("failed to open knowledge index", e));
+        }
+    }
+
+    private static KnowledgeIndex connect(Path root, Path db) throws ClassNotFoundException, SQLException {
+        Class.forName("org.sqlite.JDBC");
+        Connection conn = DriverManager.getConnection("jdbc:sqlite:" + db);
+        try (Statement s = conn.createStatement()) {
+            s.execute("PRAGMA journal_mode=WAL");
+        }
+        KnowledgeIndex index = new KnowledgeIndex(root, conn);
+        index.ensureSchema();
+        return index;
+    }
+
+    private static void deleteIndexFiles(Path root) {
+        for (String name : List.of(".kelly-index.db", ".kelly-index.db-wal", ".kelly-index.db-shm")) {
+            Path p = root.resolve(name);
+            try {
+                Files.deleteIfExists(p);
+            } catch (IOException ignored) {
+            }
         }
     }
 

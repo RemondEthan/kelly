@@ -64,6 +64,17 @@ class KnowledgeIndexTest {
     }
 
     @Test
+    void corruptDbDeletedAndReopened() throws Exception {
+        Files.writeString(dir.resolve("MEMORY.md"), "- a\n");
+        Files.writeString(dir.resolve(".kelly-index.db"), "not a sqlite database");
+        try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
+            idx.reconcile();
+            var hits = idx.search(FindQuery.parse("a", LocalDate.of(2026, 1, 1)), 12);
+            assertTrue(hits.stream().anyMatch(h -> h.relativePath().equals("MEMORY.md")));
+        }
+    }
+
+    @Test
     void schemaBumpRebuilds() throws Exception {
         Files.writeString(dir.resolve("MEMORY.md"), "- a\n");
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {

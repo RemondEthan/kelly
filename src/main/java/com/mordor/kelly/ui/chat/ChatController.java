@@ -727,31 +727,25 @@ public class ChatController {
 
     private void addLocalEvidence(String outgoing, AskGrounding grounding) {
         KnowledgeStore store = knowledgeStore();
-        if (store == null || outgoing == null || outgoing.isBlank()) {
+        if (store == null || outgoing == null || outgoing.isBlank() || grounding == null) {
             return;
         }
-        if (LocalEvidence.mentionsTodos(outgoing)) {
-            List<String> open = TodoScanner.list(store.workspace()).stream()
-                    .filter(card -> card.status() == TodoStatus.OPEN)
-                    .map(TodoCard::relativePath)
-                    .toList();
-            LinkedHashSet<String> todos = new LinkedHashSet<>();
-            if (grounding != null) {
-                for (String path : grounding.citationPaths()) {
-                    if (path != null && path.startsWith("knowledge/todos/") && open.contains(path)) {
-                        todos.add(path);
-                    }
-                }
-            }
-            for (KnowledgeStore.Hit hit : store.search(FindQuery.parse(outgoing, LocalDate.now()))) {
-                String path = hit.relativePath();
-                if (path.startsWith("knowledge/todos/") && open.contains(path)) {
-                    todos.add(path);
-                }
-            }
-            citations.addPaths(List.copyOf(todos));
+        List<String> turnPaths = grounding.citationPaths();
+        citations.addPaths(turnPaths);
+        if (!LocalEvidence.mentionsTodos(outgoing)) {
+            return;
         }
-        citations.addPaths(store.cardsContaining(LocalEvidence.terms(outgoing)));
+        List<String> open = TodoScanner.list(store.workspace()).stream()
+                .filter(card -> card.status() == TodoStatus.OPEN)
+                .map(TodoCard::relativePath)
+                .toList();
+        LinkedHashSet<String> todos = new LinkedHashSet<>();
+        for (String path : turnPaths) {
+            if (path != null && path.startsWith("knowledge/todos/") && open.contains(path)) {
+                todos.add(path);
+            }
+        }
+        citations.addPaths(List.copyOf(todos));
     }
 
     private void showTodoSources(List<String> paths) {

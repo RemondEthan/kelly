@@ -42,6 +42,8 @@
  */
 package com.mordor.kelly.kelsy.service;
 
+import com.mordor.kelly.common.Diagnostics;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -127,6 +129,7 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
         try {
             return KnowledgeIndex.open(workspace);
         } catch (RuntimeException e) {
+            Diagnostics.warn("kelsy", "knowledge index unavailable, falling back to scan: %s", e.toString());
             return null;
         }
     }

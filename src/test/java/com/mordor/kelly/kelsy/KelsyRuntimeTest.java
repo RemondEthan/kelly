@@ -32,6 +32,7 @@ class KelsyRuntimeTest {
         });
         assertFalse(runtime.hasApiKey());
         assertNotNull(runtime.store("alice"));
+        assertSame(runtime.store("alice"), runtime.store("alice"));
         assertTrue(Files.isDirectory(paths.workspace()));
         assertEquals(null, runtime.ensureAssistant());
         assertEquals(0, builds.get());

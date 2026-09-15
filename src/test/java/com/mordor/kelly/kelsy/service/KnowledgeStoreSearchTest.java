@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KnowledgeStoreSearchTest {
@@ -113,5 +114,17 @@ class KnowledgeStoreSearchTest {
         var fallback = new KnowledgeStore(dir, null).cardsContaining(terms);
         assertEquals(expected, Set.copyOf(fts));
         assertEquals(expected, Set.copyOf(fallback));
+    }
+
+    @Test
+    void unrecoverableIndexFallsBackToScan() throws Exception {
+        Files.writeString(dir.resolve("MEMORY.md"), "- 张三：长期合作\n");
+        Files.createDirectories(dir.resolve(".kelly-index.db/nested"));
+        Files.writeString(dir.resolve(".kelly-index.db/nested/x"), "block");
+        try (var store = new KnowledgeStore(dir)) {
+            assertNull(store.index());
+            var hits = store.search(FindQuery.parse("张三", LocalDate.of(2026, 9, 4)));
+            assertTrue(hits.stream().anyMatch(h -> h.relativePath().equals("MEMORY.md")));
+        }
     }
 }

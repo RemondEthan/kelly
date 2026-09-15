@@ -58,6 +58,7 @@ public final class MemoryCompactor {
             kept.add(0, "# Memory");
         }
         kept = dedupePeopleProjects(kept);
+        trimToLimit(kept);
         return new Result(joinMemory(kept), List.copyOf(inbox), true);
     }
 
@@ -89,6 +90,83 @@ public final class MemoryCompactor {
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(tmp, memory, StandardCopyOption.REPLACE_EXISTING);
         }
+    }
+
+    /**
+     * After the 14-day / inbox rules, drop oldest droppable {@code - } lines until
+     * {@code <= LIMIT_BYTES}, or only the header plus undated evergreen remain.
+     */
+    private static void trimToLimit(List<String> kept) {
+        while (byteLength(joinMemory(kept)) > LIMIT_BYTES) {
+            int drop = nextDroppable(kept);
+            if (drop < 0) {
+                return;
+            }
+            kept.remove(drop);
+        }
+    }
+
+    private static int nextDroppable(List<String> lines) {
+        int found = oldestMatching(lines, DropKind.KNOWLEDGE_POINTER);
+        if (found >= 0) {
+            return found;
+        }
+        found = oldestMatching(lines, DropKind.INBOX_PROMOTED);
+        if (found >= 0) {
+            return found;
+        }
+        return oldestMatching(lines, DropKind.DATED);
+    }
+
+    private enum DropKind {
+        KNOWLEDGE_POINTER, INBOX_PROMOTED, DATED
+    }
+
+    private static int oldestMatching(List<String> lines, DropKind kind) {
+        int best = -1;
+        LocalDate bestDate = null;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if (!matchesKind(line, kind)) {
+                continue;
+            }
+            LocalDate date = oldestDate(datesIn(line));
+            if (date == null) {
+                continue;
+            }
+            if (best < 0 || date.isBefore(bestDate)) {
+                best = i;
+                bestDate = date;
+            }
+        }
+        return best;
+    }
+
+    private static boolean matchesKind(String line, DropKind kind) {
+        if (!isListItem(line)) {
+            return false;
+        }
+        List<LocalDate> dates = datesIn(line);
+        if (dates.isEmpty()) {
+            return false;
+        }
+        boolean pointer = line.contains("knowledge/") && !line.contains("knowledge/inbox/");
+        boolean inbox = line.contains("knowledge/inbox/") || !line.contains("knowledge/");
+        return switch (kind) {
+            case KNOWLEDGE_POINTER -> pointer;
+            case INBOX_PROMOTED -> inbox;
+            case DATED -> true;
+        };
+    }
+
+    private static LocalDate oldestDate(List<LocalDate> dates) {
+        LocalDate oldest = null;
+        for (LocalDate date : dates) {
+            if (oldest == null || date.isBefore(oldest)) {
+                oldest = date;
+            }
+        }
+        return oldest;
     }
 
     private static void keepOrDrop(String line, LocalDate today, List<String> kept, List<InboxCard> inbox) {
