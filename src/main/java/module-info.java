@@ -58,6 +58,7 @@ module com.mordor.kelly {
     requires agentscope.harness;                // AgentScope 运行时：Agent 生命周期管理
     requires agentscope.extensions.model.openai; // OpenAI 兼容模型：GPT/Claude/本地模型统一接口
     requires reactor.core;                      // Project Reactor：响应式流，AgentScope 的流式响应底层
+    requires org.xerial.sqlitejdbc;         // 嵌入式 SQLite：知识库 FTS 索引
 
     // ─── UI 增强库 ──────────────────────────────────────────
     requires org.controlsfx.controls;       // ControlsFX：高级控件（Popover, Toast, ToggleSwitch 等）
