@@ -151,14 +151,25 @@ public final class KnowledgeIndex implements AutoCloseable {
         if (match.isBlank()) {
             return List.of();
         }
-        try (PreparedStatement ps = conn.prepareStatement(
+        // Date filtering happens in Java. When a window is set, do not SQL-LIMIT
+        // before that filter — in-window hits can rank below out-of-window rows.
+        boolean dateWindow = query.fromInclusive() != null;
+        String sql = dateWindow
+                ? """
+                SELECT path, snippet(cards_fts, 3, '', '', '…', 20) AS snip, bm25(cards_fts) AS rank
+                FROM cards_fts WHERE cards_fts MATCH ?
+                ORDER BY rank
                 """
+                : """
                 SELECT path, snippet(cards_fts, 3, '', '', '…', 20) AS snip, bm25(cards_fts) AS rank
                 FROM cards_fts WHERE cards_fts MATCH ?
                 ORDER BY rank LIMIT ?
-                """)) {
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, match);
-            ps.setInt(2, cap);
+            if (!dateWindow) {
+                ps.setInt(2, cap);
+            }
             List<KnowledgeStore.Hit> hits = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {

@@ -47,10 +47,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
-public record KnowledgeStore(Path workspace) {
+public record KnowledgeStore(Path workspace, KnowledgeIndex index) {
 
     /** 单个文件最大字节数（256KB） */
     public static final long MAX_FILE_BYTES = 256L * 1024;
@@ -108,10 +110,25 @@ public record KnowledgeStore(Path workspace) {
     }
 
     /**
-     * 构造函数：规范化工作空间路径为绝对路径。
+     * 规范化工作空间路径。{@code index} 允许为 null（打开失败时走扫描回退）。
+     */
+    public KnowledgeStore {
+        workspace = workspace.toAbsolutePath().normalize();
+    }
+
+    /**
+     * 构造函数：规范化工作空间并尝试打开 FTS 索引。
      */
     public KnowledgeStore(Path workspace) {
-        this.workspace = workspace.toAbsolutePath().normalize();
+        this(workspace, tryOpen(workspace));
+    }
+
+    private static KnowledgeIndex tryOpen(Path workspace) {
+        try {
+            return KnowledgeIndex.open(workspace);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -226,12 +243,27 @@ public record KnowledgeStore(Path workspace) {
      *   <li>knowledge/ 目录下的所有 .md 文件</li>
      * </ol>
      *
-     * <p>搜索逻辑：逐行扫描，要求所有关键词都匹配（AND 逻辑）。
+     * <p>搜索逻辑：优先 {@link KnowledgeIndex#reconcile()} + FTS；索引失败则逐行扫描，
+     * 要求所有关键词都匹配（AND 逻辑）。
      *
      * @param query 搜索查询（包含日期范围和关键词）
      * @return 匹配结果列表（最多 50 条）
      */
     public List<Hit> search(FindQuery query) {
+        if (index != null) {
+            try {
+                index.reconcile();
+                return index.search(query, MAX_HITS);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return scanSearch(query);
+    }
+
+    /**
+     * 扫描回退：walk + {@link #scanFile}，与索引无关。
+     */
+    private List<Hit> scanSearch(FindQuery query) {
         List<Hit> hits = new ArrayList<>();
         boolean keywordsEmpty = query.keywords().isEmpty();
         // 搜索 MEMORY.md
@@ -290,6 +322,29 @@ public record KnowledgeStore(Path workspace) {
         if (needles.isEmpty()) {
             return List.of();
         }
+        if (index != null) {
+            try {
+                index.reconcile();
+                List<Hit> hits = index.search(new FindQuery(null, null, needles), MAX_HITS);
+                Set<String> paths = new LinkedHashSet<>();
+                for (Hit hit : hits) {
+                    String path = hit.relativePath();
+                    if (path.equals("knowledge/KNOWLEDGE.md")) {
+                        continue;
+                    }
+                    paths.add(path);
+                    if (paths.size() >= MAX_HITS) {
+                        break;
+                    }
+                }
+                return List.copyOf(paths);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return scanCardsContaining(needles);
+    }
+
+    private List<String> scanCardsContaining(List<String> needles) {
         Path knowledge = workspace.resolve("knowledge");
         if (!Files.isDirectory(knowledge)) {
             return List.of();

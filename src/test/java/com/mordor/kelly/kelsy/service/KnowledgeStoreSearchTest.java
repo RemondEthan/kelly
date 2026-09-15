@@ -56,6 +56,22 @@ class KnowledgeStoreSearchTest {
     }
 
     @Test
+    void dateWindowKeepsInRangeHitWhenManyOutOfWindow() throws Exception {
+        Files.createDirectories(dir.resolve("memory"));
+        for (int i = 0; i < 80; i++) {
+            var day = LocalDate.of(2026, 6, 1).plusDays(i);
+            Files.writeString(dir.resolve("memory/" + day + ".md"),
+                    "- 张三 张三 张三 张三 张三 高相关\n");
+        }
+        Files.writeString(dir.resolve("memory/2026-03-15.md"), "- 与张三敲定评审方案\n");
+        var store = new KnowledgeStore(dir);
+        var hits = store.search(FindQuery.parse("半年前 张三", LocalDate.of(2026, 9, 2)));
+        assertTrue(hits.stream().anyMatch(h -> h.relativePath().equals("memory/2026-03-15.md")));
+        assertTrue(hits.stream().noneMatch(h -> h.relativePath().equals("memory/2026-06-01.md")));
+        assertTrue(hits.size() <= KnowledgeStore.MAX_HITS);
+    }
+
+    @Test
     void cardsContainingFindsPeoplePage() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/people"));
         Files.writeString(dir.resolve("knowledge/KNOWLEDGE.md"), "- knowledge/people/张三.md — 合作方\n");
