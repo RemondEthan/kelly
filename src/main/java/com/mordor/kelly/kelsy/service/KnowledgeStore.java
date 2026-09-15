@@ -52,7 +52,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public record KnowledgeStore(Path workspace, KnowledgeIndex index) {
+public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements AutoCloseable {
 
     /** 单个文件最大字节数（256KB） */
     public static final long MAX_FILE_BYTES = 256L * 1024;
@@ -128,6 +128,13 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) {
             return KnowledgeIndex.open(workspace);
         } catch (RuntimeException e) {
             return null;
+        }
+    }
+
+    @Override
+    public void close() {
+        if (index != null) {
+            index.close();
         }
     }
 

@@ -31,13 +31,18 @@
  */
 package com.mordor.kelly.kelsy;
 
+import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.config.ConfigLoader;
 import com.mordor.kelly.kelsy.config.KelsyConfig;
 import com.mordor.kelly.kelsy.service.AssistantService;
 import com.mordor.kelly.kelsy.service.KnowledgeStore;
 import com.mordor.kelly.kelsy.service.LocalAssistantService;
+import com.mordor.kelly.kelsy.service.MemoryCompactor;
 import com.mordor.kelly.kelsy.service.WorkspaceSeeder;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.function.Function;
 
 public final class KelsyRuntime implements AutoCloseable {
@@ -130,7 +135,26 @@ public final class KelsyRuntime implements AutoCloseable {
         ConfigLoader.ensureAndHasApiKey(paths);
         WorkspaceSeeder.seed(paths.workspace());
         WorkspaceSeeder.seed(KnowledgeStore.knowledgeRoot(paths.workspace(), username));
+        upgradeKnowledge(KnowledgeStore.knowledgeRoot(paths.workspace(), username));
         return new KelsyRuntime(paths, factory);
+    }
+
+    static void upgradeKnowledge(Path userRoot) {
+        try (KnowledgeStore store = new KnowledgeStore(userRoot)) {
+            if (store.index() != null) {
+                store.index().reconcile();
+            }
+            if (store.memoryBytes() > MemoryCompactor.LIMIT_BYTES) {
+                String raw = Files.readString(userRoot.resolve("MEMORY.md"));
+                var result = MemoryCompactor.compact(raw, LocalDate.now());
+                MemoryCompactor.apply(userRoot, result);
+                if (store.index() != null) {
+                    store.index().reconcile();
+                }
+            }
+        } catch (Exception e) {
+            Diagnostics.warn("kelsy", "knowledge upgrade skipped: %s", e.toString());
+        }
     }
 
     /**
