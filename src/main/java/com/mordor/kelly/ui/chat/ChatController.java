@@ -7,6 +7,7 @@ import com.mordor.kelly.kelsy.KelsyRuntime;
 import com.mordor.kelly.kelsy.KelsySendRouter;
 import com.mordor.kelly.kelsy.model.AssistantMessage;
 import com.mordor.kelly.kelsy.model.MessageBlock;
+import com.mordor.kelly.kelsy.service.AskGrounding;
 import com.mordor.kelly.kelsy.service.AssistantService;
 import com.mordor.kelly.kelsy.service.CitationTurn;
 import com.mordor.kelly.kelsy.service.FindQuery;
@@ -50,6 +51,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -534,9 +536,11 @@ public class ChatController {
             kelsyBusy.set(false);
             return;
         }
+        AskGrounding grounding = AskGrounding.prepare(knowledgeStore(), outgoing, LocalDate.now());
+        citations.addPaths(grounding.citationPaths());
         AssistantMessage reply = AssistantMessage.streaming(Sender.ASSISTANT);
         liveAssistant.set(reply);
-        assistant.chat(outgoing, new AssistantService.ReplyHandler() {
+        assistant.chat(grounding.messageForModel(), new AssistantService.ReplyHandler() {
             @Override
             public void onTextDelta(String delta) {
                 onFx(() -> reply.append(delta));
@@ -612,7 +616,7 @@ public class ChatController {
                     persistAssistant(reply.content());
                     kelsyBusy.set(false);
                     citations.addRetrievalText(reply.content());
-                    addLocalEvidence(outgoing);
+                    addLocalEvidence(outgoing, grounding);
                     boolean retrieved = citations.commitIfRetrieved();
                     Diagnostics.warn("cite", "retrieved=%s shown=%s outgoing=%s",
                             retrieved, citations.shown(), outgoing);
@@ -721,22 +725,31 @@ public class ChatController {
         reminders = null;
     }
 
-    private void addLocalEvidence(String outgoing) {
+    private void addLocalEvidence(String outgoing, AskGrounding grounding) {
         KnowledgeStore store = knowledgeStore();
         if (store == null || outgoing == null || outgoing.isBlank()) {
             return;
         }
         if (LocalEvidence.mentionsTodos(outgoing)) {
-            citations.addPaths(TodoScanner.list(store.workspace()).stream()
+            List<String> open = TodoScanner.list(store.workspace()).stream()
                     .filter(card -> card.status() == TodoStatus.OPEN)
                     .map(TodoCard::relativePath)
-                    .toList());
-        }
-        if (LocalEvidence.mentionsMeetings(outgoing)) {
-            citations.addPaths(store.cardPaths("knowledge/meetings"));
-        }
-        if (LocalEvidence.mentionsDecisions(outgoing)) {
-            citations.addPaths(store.cardPaths("knowledge/decisions"));
+                    .toList();
+            LinkedHashSet<String> todos = new LinkedHashSet<>();
+            if (grounding != null) {
+                for (String path : grounding.citationPaths()) {
+                    if (path != null && path.startsWith("knowledge/todos/") && open.contains(path)) {
+                        todos.add(path);
+                    }
+                }
+            }
+            for (KnowledgeStore.Hit hit : store.search(FindQuery.parse(outgoing, LocalDate.now()))) {
+                String path = hit.relativePath();
+                if (path.startsWith("knowledge/todos/") && open.contains(path)) {
+                    todos.add(path);
+                }
+            }
+            citations.addPaths(List.copyOf(todos));
         }
         citations.addPaths(store.cardsContaining(LocalEvidence.terms(outgoing)));
     }

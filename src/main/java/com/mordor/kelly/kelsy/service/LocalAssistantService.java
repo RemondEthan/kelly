@@ -58,9 +58,11 @@ import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.model.Model;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.tools.ToolsConfig;
 import reactor.core.scheduler.Schedulers;
 
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * 在本进程内跑 AgentScope 的 HarnessAgent。
@@ -116,18 +118,22 @@ public final class LocalAssistantService implements AssistantService {
         WorkspaceSeeder.seed(KnowledgeStore.knowledgeRoot(workspace, userId));
         Model model = ModelFactory.create(config.model());
 
-        // 构建 HarnessAgent：配置名称、系统提示词、模型和安全限制
+        ToolsConfig toolsConfig = new ToolsConfig();
+        toolsConfig.setDeny(List.of("memory_search"));
         HarnessAgent agent = HarnessAgent.builder()
                 .name("tars")
                 .sysPrompt(SYS_PROMPT)
                 .model(model)
                 .workspace(config.workspacePath())
+                .toolsConfig(toolsConfig)
                 .disableShellTool()        // 禁用 Shell 命令执行（安全考虑）
                 .disableDynamicSkills()    // 禁用动态技能加载
                 .disableSubagents()        // 禁用子代理调用
                 .disableDynamicSubagents() // 禁用动态子代理
                 .maxIters(20)              // 限制最大迭代次数（防止无限循环）
                 .build();
+        KnowledgeStore store = KnowledgeStore.forUser(config.workspacePath(), userId);
+        agent.getToolkit().registerAgentTool(new KnowledgeSearchTool(store));
 
         // 创建运行时上下文：固定会话 ID 确保跨重启延续
         RuntimeContext context = RuntimeContext.builder()
