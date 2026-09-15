@@ -267,8 +267,9 @@ class ChatControllerKelsyTest {
         c.setOnOpenKnowledge(opened::add);
         assertTrue(c.send("@tars 我最近有什么会议？").accepted());
         assertTrue(asked.getFirst().contains("我最近有什么会议？"));
-        assertTrue(sources.getLast().contains("knowledge/meetings/2026-09-04-客户XX-交付licence.md"));
+        assertEquals(List.of("knowledge/meetings/2026-09-04-客户XX-交付licence.md"), sources.getLast());
         assertFalse(sources.getLast().contains("knowledge/meetings/unrelated.md"));
+        assertFalse(sources.getLast().contains("knowledge/KNOWLEDGE.md"));
         assertEquals("knowledge/meetings/2026-09-04-客户XX-交付licence.md", opened.getLast());
     }
 

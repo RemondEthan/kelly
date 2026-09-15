@@ -354,9 +354,14 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
         return scanCardsContaining(needles);
     }
 
+    /** Catalog index page; indexed, but excluded from shown citations and card lists. */
+    static boolean isKnowledgeCatalog(String path) {
+        return "knowledge/KNOWLEDGE.md".equals(path);
+    }
+
     /** Same scope as {@link #scanCardsContaining}: knowledge cards, not the index file. */
-    private static boolean isKnowledgeCard(String path) {
-        return path.startsWith("knowledge/") && !path.equals("knowledge/KNOWLEDGE.md");
+    static boolean isKnowledgeCard(String path) {
+        return path != null && path.startsWith("knowledge/") && !isKnowledgeCatalog(path);
     }
 
     private List<String> scanCardsContaining(List<String> needles) {

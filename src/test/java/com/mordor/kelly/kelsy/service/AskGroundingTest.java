@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,6 +35,16 @@ class AskGroundingTest {
             assertTrue(message.contains("张三邮箱是什么"));
             assertTrue(grounding.citationPaths().contains("knowledge/people/张三.md"));
         }
+    }
+
+    @Test
+    void citationPathsSkipKnowledgeCatalog() {
+        var grounding = new AskGrounding(true, List.of(
+                new KnowledgeStore.Hit("knowledge/KNOWLEDGE.md", 1, "会议目录", 0.9),
+                new KnowledgeStore.Hit("knowledge/meetings/2026-09-04-客户XX-交付licence.md", 1, "先申请再发货", 0.8)),
+                "我最近有什么会议？");
+        assertEquals(List.of("knowledge/meetings/2026-09-04-客户XX-交付licence.md"), grounding.citationPaths());
+        assertFalse(grounding.messageForModel().contains("knowledge/KNOWLEDGE.md"));
     }
 
     @Test

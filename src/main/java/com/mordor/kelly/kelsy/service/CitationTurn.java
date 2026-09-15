@@ -234,7 +234,7 @@ public final class CitationTurn {
      * 判断路径是否为知识卡片（knowledge/ 目录下的非索引文件）。
      */
     private static boolean isEvidenceCard(String path) {
-        return path.startsWith("knowledge/") && !path.equals("knowledge/KNOWLEDGE.md");
+        return KnowledgeStore.isKnowledgeCard(path);
     }
 
     /**
