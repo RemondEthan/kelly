@@ -17,7 +17,7 @@
  *   <li>自适应父容器宽度（通过 layoutChildren 动态调整）</li>
  *   <li>文本自动换行</li>
  *   <li>代码块使用等宽字体</li>
- *   <li>表格使用管道符分隔显示</li>
+ *   <li>表格使用网格显示</li>
  * </ul>
  *
  * <p>链接处理：
@@ -35,6 +35,8 @@ package com.mordor.kelly.kelsy.ui.markdown;
 import com.mordor.kelly.ui.chat.SelectableTextFlow;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -77,6 +79,10 @@ public final class MarkdownView extends VBox {
         setFillWidth(true);
         setMinWidth(0);
         setMaxWidth(Double.MAX_VALUE);
+        maxWidthProperty().addListener((obs, o, n) -> {
+            lastWrap = -1;
+            requestLayout();
+        });
         if (nodes != null) {
             for (MdNode node : nodes) {
                 getChildren().add(renderBlock(node));
@@ -90,7 +96,14 @@ public final class MarkdownView extends VBox {
      */
     @Override
     protected void layoutChildren() {
-        double inner = Math.max(1, getWidth() - snappedLeftInset() - snappedRightInset());
+        // Wrap to the allowed max (window cap), not the currently allocated width.
+        // Using getWidth() here locks prefWidth after the first wrap and the bubble
+        // cannot grow when the window widens.
+        double cap = getMaxWidth();
+        if (!(cap > 0) || Double.isInfinite(cap) || cap == Double.MAX_VALUE) {
+            cap = getWidth();
+        }
+        double inner = Math.max(1, cap - snappedLeftInset() - snappedRightInset());
         if (Math.abs(inner - lastWrap) >= 1.0) {
             lastWrap = inner;
             for (Node child : getChildren()) {
@@ -130,6 +143,16 @@ public final class MarkdownView extends VBox {
                     continue;
                 }
                 constrain(child, rest);
+            }
+            return;
+        }
+        if (node instanceof GridPane grid) {
+            grid.setMinWidth(0);
+            grid.setMaxWidth(width);
+            int cols = Math.max(1, grid.getColumnCount());
+            double cell = Math.max(1, width / cols);
+            for (Node child : grid.getChildren()) {
+                constrain(child, cell);
             }
             return;
         }
@@ -212,25 +235,39 @@ public final class MarkdownView extends VBox {
     }
 
     /**
-     * 渲染表格（简化为管道符分隔的文本格式）。
+     * 渲染 GFM 表格为网格，表头加粗。
      */
-    private VBox tableBox(MdNode.Table table) {
-        VBox box = new VBox(2);
-        box.setMinWidth(0);
-        box.getStyleClass().add("md-table");
+    private GridPane tableBox(MdNode.Table table) {
+        GridPane grid = new GridPane();
+        grid.setMinWidth(0);
+        grid.setMaxWidth(Double.MAX_VALUE);
+        grid.getStyleClass().add("md-table");
+        int cols = 0;
         for (List<List<MdSpan>> row : table.rows()) {
-            List<MdSpan> spans = new java.util.ArrayList<>();
-            boolean first = true;
-            for (List<MdSpan> cell : row) {
-                if (!first) {
-                    spans.add(new MdSpan.Text(" | "));
-                }
-                first = false;
-                spans.addAll(cell);
-            }
-            box.getChildren().add(flow(spans));
+            cols = Math.max(cols, row.size());
         }
-        return box;
+        for (int c = 0; c < cols; c++) {
+            ColumnConstraints cc = new ColumnConstraints();
+            cc.setHgrow(Priority.ALWAYS);
+            cc.setFillWidth(true);
+            cc.setPercentWidth(cols == 0 ? 100 : 100.0 / cols);
+            grid.getColumnConstraints().add(cc);
+        }
+        int r = 0;
+        for (List<List<MdSpan>> row : table.rows()) {
+            for (int c = 0; c < row.size(); c++) {
+                SelectableTextFlow cell = flow(row.get(c));
+                cell.getStyleClass().add("md-table-cell");
+                if (r == 0) {
+                    cell.getStyleClass().add("md-table-header");
+                }
+                GridPane.setHgrow(cell, Priority.ALWAYS);
+                GridPane.setFillWidth(cell, true);
+                grid.add(cell, c, r);
+            }
+            r++;
+        }
+        return grid;
     }
 
     /**

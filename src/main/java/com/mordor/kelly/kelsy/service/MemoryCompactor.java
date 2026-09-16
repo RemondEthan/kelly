@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 public final class MemoryCompactor {
 
     public static final int LIMIT_BYTES = 4096;
+    public static final int MAX_INBOX_CARDS = 8;
 
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
     private static final Pattern PEOPLE_OR_PROJECT =
@@ -59,7 +60,7 @@ public final class MemoryCompactor {
         }
         kept = dedupePeopleProjects(kept);
         trimToLimit(kept);
-        return new Result(joinMemory(kept), List.copyOf(inbox), true);
+        return new Result(joinMemory(kept), collapseInbox(inbox, now), true);
     }
 
     public static void apply(Path workspace, Result result) throws IOException {
@@ -203,6 +204,22 @@ public final class MemoryCompactor {
             }
         }
         return sb.isEmpty() ? "note" : sb.toString();
+    }
+
+    private static List<InboxCard> collapseInbox(List<InboxCard> inbox, LocalDate today) {
+        if (inbox.size() <= MAX_INBOX_CARDS) {
+            return List.copyOf(inbox);
+        }
+        StringBuilder markdown = new StringBuilder("# 收件箱\n\n");
+        for (InboxCard card : inbox) {
+            String body = card.markdown() == null ? "" : card.markdown();
+            for (String line : body.split("\\R")) {
+                if (line.startsWith("- ")) {
+                    markdown.append(line).append('\n');
+                }
+            }
+        }
+        return List.of(new InboxCard("knowledge/inbox/" + today + "-batch.md", markdown.toString()));
     }
 
     private static boolean isSafe(char c) {

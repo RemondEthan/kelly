@@ -258,6 +258,20 @@
     -fx-text-fill: #212121;
     -fx-fill: #212121;
 }
+.md-table {
+    -fx-border-color: #D4D4D8;
+    -fx-border-width: 1;
+    -fx-background-color: #FFFFFF;
+}
+.md-table-cell {
+    -fx-padding: 4 8 4 8;
+    -fx-border-color: #E4E4E7;
+    -fx-border-width: 0 1 1 0;
+}
+.md-table-header {
+    -fx-font-weight: bold;
+    -fx-background-color: #F4F4F5;
+}
 .tool-card {
     -fx-background-color: #F4F4F5;
     -fx-padding: 4 8 4 8;

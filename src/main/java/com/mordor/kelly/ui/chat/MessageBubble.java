@@ -212,9 +212,13 @@ public class MessageBubble extends HBox {
      * 绑定气泡最大宽度到 maxBubbleWidth 的 100%（最小 120px）。
      */
     private void bindBubbleWidth(Region bubble) {
-        bubble.maxWidthProperty().bind(Bindings.createDoubleBinding(
+        bubble.maxWidthProperty().unbind();
+        bubble.prefWidthProperty().unbind();
+        var cap = Bindings.createDoubleBinding(
                 () -> Math.max(120, maxBubbleWidth.getValue().doubleValue()),
-                maxBubbleWidth));
+                maxBubbleWidth);
+        bubble.maxWidthProperty().bind(cap);
+        cap.addListener((obs, o, n) -> bubble.requestLayout());
     }
 
     /**

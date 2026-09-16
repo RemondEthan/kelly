@@ -100,7 +100,7 @@ public final class KelsyRuntime implements AutoCloseable {
         }
         if (instance == null) {
             instance = open(paths, username,
-                    cfg -> LocalAssistantService.create(cfg, username));
+                    cfg -> LocalAssistantService.create(cfg, username, instance.store(username)));
         }
         return instance;
     }
@@ -152,6 +152,10 @@ public final class KelsyRuntime implements AutoCloseable {
                 var result = MemoryCompactor.compact(raw, LocalDate.now());
                 MemoryCompactor.apply(userRoot, result);
                 if (store.index() != null) {
+                    store.upsert("MEMORY.md");
+                    for (var card : result.inboxCards()) {
+                        store.upsert(card.relativePath());
+                    }
                     store.index().reconcile();
                 }
             }

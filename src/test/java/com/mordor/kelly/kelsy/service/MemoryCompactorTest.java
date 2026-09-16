@@ -72,6 +72,25 @@ class MemoryCompactorTest {
     }
 
     @Test
+    void mergesExcessInboxCardsIntoOneBatch() {
+        StringBuilder fat = new StringBuilder("# Memory\n\n- 喜欢深色主题\n");
+        fat.append("x".repeat(5000)).append('\n');
+        for (int i = 1; i <= 12; i++) {
+            fat.append("- 2020-01-")
+                    .append(String.format("%02d", i))
+                    .append(" 孤儿流水")
+                    .append(i)
+                    .append('\n');
+        }
+        var r = MemoryCompactor.compact(fat.toString(), LocalDate.of(2026, 9, 15));
+        assertEquals(1, r.inboxCards().size());
+        assertEquals("knowledge/inbox/2026-09-15-batch.md", r.inboxCards().get(0).relativePath());
+        String markdown = r.inboxCards().get(0).markdown();
+        assertTrue(markdown.contains("孤儿流水1"));
+        assertTrue(markdown.contains("孤儿流水12"));
+    }
+
+    @Test
     void applyWritesInboxBackupAndMemory(@TempDir Path dir) throws Exception {
         String original = "# Memory\n\n" + "y".repeat(5000) + "\n- 2020-01-01 没有路径的流水\n";
         Files.writeString(dir.resolve("MEMORY.md"), original);

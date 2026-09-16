@@ -48,6 +48,18 @@ class AskGroundingTest {
     }
 
     @Test
+    void doesNotAttachMemoryMdAsCandidate() throws Exception {
+        Files.writeString(dir.resolve("MEMORY.md"), "- 喜欢深色主题\n");
+        try (var store = new KnowledgeStore(dir)) {
+            var grounding = AskGrounding.prepare(store, "喜欢什么主题", LocalDate.of(2026, 9, 15));
+            assertTrue(grounding.searched());
+            assertTrue(grounding.attached().stream().noneMatch(h -> "MEMORY.md".equals(h.relativePath())));
+            assertFalse(grounding.messageForModel().contains("MEMORY.md"));
+            assertFalse(grounding.citationPaths().contains("MEMORY.md"));
+        }
+    }
+
+    @Test
     void greetingSkipsSearch() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/people"));
         Files.writeString(dir.resolve("knowledge/people/张三.md"), "# 张三\n");

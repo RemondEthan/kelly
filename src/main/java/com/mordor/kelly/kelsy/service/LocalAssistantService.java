@@ -85,20 +85,24 @@ public final class LocalAssistantService implements AssistantService {
     /** AgentScope 运行时上下文，包含会话和用户信息 */
     private final RuntimeContext context;
 
-    /** 与 {@link KnowledgeSearchTool} 共用的用户知识库（须在 {@link #close()} 关闭） */
+    /** 与 {@link KnowledgeSearchTool} 共用的用户知识库；仅 {@code ownsStore} 时由本类关闭 */
     private final KnowledgeStore store;
+    private final boolean ownsStore;
 
     /**
      * 私有构造函数，通过 {@link #create} 工厂方法创建。
      *
-     * @param agent   HarnessAgent 实例
-     * @param context 运行时上下文
-     * @param store   知识库（与 knowledge_search 同一实例）
+     * @param agent     HarnessAgent 实例
+     * @param context   运行时上下文
+     * @param store     知识库（与 knowledge_search 同一实例）
+     * @param ownsStore true 时 {@link #close()} 关闭 store
      */
-    private LocalAssistantService(HarnessAgent agent, RuntimeContext context, KnowledgeStore store) {
+    private LocalAssistantService(HarnessAgent agent, RuntimeContext context, KnowledgeStore store,
+                                  boolean ownsStore) {
         this.agent = agent;
         this.context = context;
         this.store = store;
+        this.ownsStore = ownsStore;
     }
 
     /**
@@ -118,14 +122,32 @@ public final class LocalAssistantService implements AssistantService {
      * @return 新的 LocalAssistantService 实例
      */
     public static LocalAssistantService create(KelsyConfig config, String userId) {
+        Path knowledgeRoot = KnowledgeStore.knowledgeRoot(config.workspacePath(), userId);
+        WorkspaceSeeder.seed(config.workspacePath());
+        WorkspaceSeeder.seed(knowledgeRoot);
+        return create(config, userId, new KnowledgeStore(knowledgeRoot), true);
+    }
+
+    /**
+     * 使用运行时已打开的知识库，避免同一 {@code .kelly-index.db} 上再开一条连接。
+     */
+    public static LocalAssistantService create(KelsyConfig config, String userId, KnowledgeStore store) {
+        Path knowledgeRoot = KnowledgeStore.knowledgeRoot(config.workspacePath(), userId);
+        WorkspaceSeeder.seed(config.workspacePath());
+        WorkspaceSeeder.seed(knowledgeRoot);
+        return create(config, userId, store, false);
+    }
+
+    private static LocalAssistantService create(KelsyConfig config, String userId, KnowledgeStore store,
+                                                boolean ownsStore) {
         Path workspace = config.workspacePath();
         Path knowledgeRoot = KnowledgeStore.knowledgeRoot(workspace, userId);
-        WorkspaceSeeder.seed(workspace);
-        WorkspaceSeeder.seed(knowledgeRoot);
         Model model = ModelFactory.create(config.model());
 
         ToolsConfig toolsConfig = new ToolsConfig();
         toolsConfig.setDeny(List.of("memory_search"));
+        KnowledgeStore knowledge = store != null ? store : new KnowledgeStore(knowledgeRoot);
+        boolean closeStore = ownsStore || store == null;
         HarnessAgent agent = HarnessAgent.builder()
                 .name("tars")
                 .sysPrompt(SYS_PROMPT)
@@ -138,16 +160,15 @@ public final class LocalAssistantService implements AssistantService {
                 .disableDynamicSubagents() // 禁用动态子代理
                 .maxIters(20)              // 限制最大迭代次数（防止无限循环）
                 .build();
-        KnowledgeStore store = new KnowledgeStore(knowledgeRoot);
-        agent.getToolkit().registerAgentTool(new KnowledgeSearchTool(store));
+        agent.getToolkit().registerAgentTool(new KnowledgeSearchTool(knowledge));
+        IndexingAgentTool.install(agent.getToolkit(), knowledge);
 
-        // 创建运行时上下文：固定会话 ID 确保跨重启延续
         RuntimeContext context = RuntimeContext.builder()
                 .sessionId(SESSION_ID)
                 .userId(userId)
                 .build();
 
-        return new LocalAssistantService(agent, context, store);
+        return new LocalAssistantService(agent, context, knowledge, closeStore);
     }
 
     /**
@@ -177,7 +198,7 @@ public final class LocalAssistantService implements AssistantService {
         try {
             agent.close();
         } finally {
-            if (store != null) {
+            if (ownsStore && store != null) {
                 store.close();
             }
         }

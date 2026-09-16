@@ -253,21 +253,41 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
      *   <li>knowledge/ 目录下的所有 .md 文件</li>
      * </ol>
      *
-     * <p>搜索逻辑：优先 {@link KnowledgeIndex#reconcile()} + FTS；索引失败则逐行扫描，
+     * <p>搜索逻辑：优先 {@link KnowledgeIndex#reconcileIfStale()} + FTS；索引失败则逐行扫描，
      * 要求所有关键词都匹配（AND 逻辑）。
      *
      * @param query 搜索查询（包含日期范围和关键词）
      * @return 匹配结果列表（最多 50 条）
      */
     public List<Hit> search(FindQuery query) {
+        return search(query, false);
+    }
+
+    /**
+     * @param forceReconcile true 时全盘对账（模型刚写完卡后的补查）
+     */
+    public List<Hit> search(FindQuery query, boolean forceReconcile) {
         if (index != null) {
             try {
-                index.reconcile();
+                if (forceReconcile) {
+                    index.reconcile();
+                } else {
+                    index.reconcileIfStale();
+                }
                 return index.search(query, MAX_HITS);
             } catch (RuntimeException ignored) {
             }
         }
         return scanSearch(query);
+    }
+
+    /**
+     * 按相对路径增量更新索引。写卡之后应调用，避免下一次检索再全盘 reconcile。
+     */
+    public void upsert(String relativePath) {
+        if (index != null && relativePath != null && !relativePath.isBlank()) {
+            index.upsert(relativePath);
+        }
     }
 
     /**
@@ -334,7 +354,7 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
         }
         if (index != null) {
             try {
-                index.reconcile();
+                index.reconcileIfStale();
                 Set<String> paths = new LinkedHashSet<>();
                 // OR any needle: /find search() stays AND via FindQuery MATCH.
                 for (String needle : needles) {
@@ -360,6 +380,11 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
     /** Catalog index page; indexed, but excluded from shown citations and card lists. */
     static boolean isKnowledgeCatalog(String path) {
         return "knowledge/KNOWLEDGE.md".equals(path);
+    }
+
+    /** L0 已注入上下文，预检索不再当卡片附上。 */
+    static boolean isAskCandidateExcluded(String path) {
+        return isKnowledgeCatalog(path) || "MEMORY.md".equals(path);
     }
 
     /** Same scope as {@link #scanCardsContaining}: knowledge cards, not the index file. */

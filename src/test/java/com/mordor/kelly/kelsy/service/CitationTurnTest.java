@@ -104,6 +104,14 @@ class CitationTurnTest {
     }
 
     @Test
+    void addPathsSkipsKnowledgeCatalog() {
+        CitationTurn t = new CitationTurn();
+        t.addPaths(List.of("knowledge/KNOWLEDGE.md", "knowledge/meetings/hit.md"));
+        assertTrue(t.commitIfRetrieved());
+        assertEquals(List.of("knowledge/meetings/hit.md"), t.shown());
+    }
+
+    @Test
     void listFilesIsRetrieval() {
         assertTrue(CitationTurn.isRetrievalTool("list_files"));
         CitationTurn t = new CitationTurn();

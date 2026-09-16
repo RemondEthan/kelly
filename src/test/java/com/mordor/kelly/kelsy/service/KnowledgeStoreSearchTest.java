@@ -117,6 +117,22 @@ class KnowledgeStoreSearchTest {
     }
 
     @Test
+    void searchWithinTtlMissesUnupsertedFileThenHitsAfterUpsert() throws Exception {
+        Files.writeString(dir.resolve("MEMORY.md"), "- 张三：长期合作\n");
+        var today = LocalDate.of(2026, 9, 4);
+        try (var store = new KnowledgeStore(dir)) {
+            store.search(FindQuery.parse("张三", today));
+            Files.createDirectories(dir.resolve("knowledge/people"));
+            Files.writeString(dir.resolve("knowledge/people/李四.md"), "# 李四\n- 角色：合作方\n");
+            var missed = store.search(FindQuery.parse("李四", today));
+            assertTrue(missed.stream().noneMatch(h -> h.relativePath().equals("knowledge/people/李四.md")));
+            store.upsert("knowledge/people/李四.md");
+            var hits = store.search(FindQuery.parse("李四", today));
+            assertTrue(hits.stream().anyMatch(h -> h.relativePath().equals("knowledge/people/李四.md")));
+        }
+    }
+
+    @Test
     void unrecoverableIndexFallsBackToScan() throws Exception {
         Files.writeString(dir.resolve("MEMORY.md"), "- 张三：长期合作\n");
         Files.createDirectories(dir.resolve(".kelly-index.db/nested"));

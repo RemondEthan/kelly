@@ -59,6 +59,8 @@ module com.mordor.kelly {
     requires agentscope.harness;                // AgentScope 运行时：Agent 生命周期管理
     requires agentscope.extensions.model.openai; // OpenAI 兼容模型：GPT/Claude/本地模型统一接口
     requires reactor.core;                      // Project Reactor：响应式流，AgentScope 的流式响应底层
+    requires org.slf4j;                         // SLF4J API：AgentScope formatter 静态初始化依赖 LoggerFactory
+    requires org.slf4j.simple;                  // SLF4J 实现：必须进模块图，否则 javafx:run 不会带上 binding
     requires org.xerial.sqlitejdbc;         // 嵌入式 SQLite：知识库 FTS 索引
 
     // ─── UI 增强库 ──────────────────────────────────────────

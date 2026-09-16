@@ -1,5 +1,7 @@
 package com.mordor.kelly.kelsy.service;
 
+import com.mordor.kelly.common.Diagnostics;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -16,13 +18,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 public final class KnowledgeIndex implements AutoCloseable {
 
     private static final String SCHEMA_VERSION = "1";
+    static final long RECONCILE_TTL_NANOS = TimeUnit.SECONDS.toNanos(2);
+    private static final long SLOW_RECONCILE_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
 
     private final Path workspace;
     private final Connection conn;
+    private long lastReconcileNanos;
 
     private KnowledgeIndex(Path workspace, Connection conn) {
         this.workspace = workspace;
@@ -65,7 +71,16 @@ public final class KnowledgeIndex implements AutoCloseable {
         }
     }
 
+    public void reconcileIfStale() {
+        long now = System.nanoTime();
+        if (lastReconcileNanos > 0 && now - lastReconcileNanos < RECONCILE_TTL_NANOS) {
+            return;
+        }
+        reconcile();
+    }
+
     public void reconcile() {
+        long start = System.nanoTime();
         try {
             Set<String> disk = collectDiskPaths();
             Set<String> indexed = indexedPaths();
@@ -81,10 +96,16 @@ public final class KnowledgeIndex implements AutoCloseable {
                     upsert(path);
                 }
             }
+            lastReconcileNanos = System.nanoTime();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } catch (SQLException e) {
             throw new UncheckedIOException(new IOException(e));
+        } finally {
+            long took = System.nanoTime() - start;
+            if (took >= SLOW_RECONCILE_NANOS) {
+                Diagnostics.warn("kelsy", "knowledge reconcile took %dms", took / 1_000_000L);
+            }
         }
     }
 

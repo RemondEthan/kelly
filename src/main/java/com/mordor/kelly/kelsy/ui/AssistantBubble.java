@@ -154,7 +154,7 @@ public class AssistantBubble extends HBox {
         body.getChildren().clear();
         // 流式接收中且无内容时显示省略号
         if (msg.blocks().isEmpty() && msg.streamingProperty().get()) {
-            body.getChildren().add(styled(textLabel("…")));
+            body.getChildren().add(textLabel("…"));
             return;
         }
         for (MessageBlock block : msg.blocks()) {
@@ -178,10 +178,8 @@ public class AssistantBubble extends HBox {
             // 文本块：流式中显示纯文本，完成后渲染 Markdown
             boolean streaming = msg.streamingProperty().get() || block.streamingProperty().get();
             if (streaming || msg.sender() == Sender.SYSTEM) {
-                Region label = textLabelFor(block);
-                body.getChildren().add(styled(label));
+                body.getChildren().add(textLabelFor(block));
             } else {
-                // 尝试解析为待办提醒格式
                 var reminder = ReminderFormat.parse(block.content());
                 if (reminder.isPresent()) {
                     body.getChildren().add(styled(reminderBox(reminder.get())));
@@ -252,7 +250,6 @@ public class AssistantBubble extends HBox {
         sel.textProperty().bind(Bindings.createStringBinding(
                 () -> initialContent(block),
                 block.contentProperty(), block.streamingProperty()));
-        bindBubbleWidth(sel);
         return styled(sel);
     }
 
@@ -268,7 +265,6 @@ public class AssistantBubble extends HBox {
      */
     private Region textLabel(String text) {
         SelectableTextFlow sel = SelectableTextFlow.forText(text);
-        bindBubbleWidth(sel);
         return styled(sel);
     }
 
@@ -277,11 +273,9 @@ public class AssistantBubble extends HBox {
      */
     private Node markdownOrPlain(String source) {
         try {
-            MarkdownView view = new MarkdownView(MarkdownRenderer.parse(source), onWorkspaceLink);
-            bindBubbleWidth(view);
-            return view;
+            return new MarkdownView(MarkdownRenderer.parse(source), onWorkspaceLink);
         } catch (RuntimeException e) {
-            return textLabel(source);
+            return SelectableTextFlow.forText(source);
         }
     }
 
@@ -305,8 +299,12 @@ public class AssistantBubble extends HBox {
      */
     private void bindBubbleWidth(Region bubble) {
         bubble.setMinWidth(0);
-        bubble.maxWidthProperty().bind(Bindings.createDoubleBinding(
+        bubble.maxWidthProperty().unbind();
+        bubble.prefWidthProperty().unbind();
+        var cap = Bindings.createDoubleBinding(
                 () -> Math.max(120, maxBubbleWidth.getValue().doubleValue()),
-                maxBubbleWidth));
+                maxBubbleWidth);
+        bubble.maxWidthProperty().bind(cap);
+        cap.addListener((obs, o, n) -> bubble.requestLayout());
     }
 }

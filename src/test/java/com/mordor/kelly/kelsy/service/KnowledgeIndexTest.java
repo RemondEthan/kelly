@@ -1,5 +1,6 @@
 package com.mordor.kelly.kelsy.service;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -88,5 +89,23 @@ class KnowledgeIndexTest {
             var hits = idx.search(FindQuery.parse("a", LocalDate.of(2026, 1, 1)), 12);
             assertTrue(hits.stream().anyMatch(h -> h.relativePath().equals("MEMORY.md")));
         }
+    }
+
+    @Tag("slow")
+    @Test
+    void reconcileTenThousandCardsFindsLastFile() throws Exception {
+        Files.createDirectories(dir.resolve("knowledge/inbox"));
+        for (int i = 0; i < 10_000; i++) {
+            Files.writeString(dir.resolve("knowledge/inbox/n" + i + ".md"), "- token" + i + "\n");
+        }
+        Files.writeString(dir.resolve("MEMORY.md"), "- ptr\n");
+        long start = System.nanoTime();
+        try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
+            idx.reconcile();
+            var hits = idx.search(FindQuery.parse("token9999", LocalDate.of(2026, 9, 4)), 5);
+            assertTrue(hits.stream().anyMatch(h -> h.relativePath().equals("knowledge/inbox/n9999.md")));
+        }
+        long ms = (System.nanoTime() - start) / 1_000_000L;
+        System.out.println("knowledge reconcile 10000 cards: " + ms + "ms");
     }
 }

@@ -51,7 +51,7 @@ public final class KnowledgeSearchTool implements AgentTool {
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         String query = queryOf(param);
-        List<KnowledgeStore.Hit> hits = store.search(FindQuery.parse(query, LocalDate.now()));
+        List<KnowledgeStore.Hit> hits = store.search(FindQuery.parse(query, LocalDate.now()), true);
         int n = Math.min(MAX_RESULTS, hits.size());
         if (n == 0) {
             return Mono.just(ToolResultBlock.text("No matches."));

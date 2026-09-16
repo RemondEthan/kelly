@@ -174,7 +174,7 @@ public final class CitationTurn {
             return;
         }
         for (String p : paths) {
-            if (p != null && !p.isBlank()) {
+            if (p != null && !p.isBlank() && !KnowledgeStore.isKnowledgeCatalog(p)) {
                 pending.add(p);
             }
         }
