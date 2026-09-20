@@ -1268,3 +1268,300 @@ UI：
 - 故障状态不会伪装成未归档。
 - 20,000 chunks 下达到约定 P95。
 - Markdown 在所有索引故障和迁移场景中保持不变。
+
+## 26. 集合型查询通道（FORCE_COVER）
+
+### 26.1 产品语义缺口
+
+相关性检索的目标函数是"从候选里挑最相关的"，集合型意图（"我的全部待办"、"会议 X 还有哪些 OPEN"）的目标函数是"穷举所有满足结构化约束的卡片"。两类查询在召回上限、阈值、附卡数量、排序四个契约上对立：
+
+| 维度 | 相关性管线契约 | 集合型意图契约 |
+|---|---|---|
+| 召回上限 | top-50（§12.3 / §16.3 性能预算基于此） | 必须穷举全集，无上限 |
+| 阈值 | STRONG/WEAK/REJECTED 三分类（§14） | 结构化字段匹配即召回 |
+| 附卡数量 | ASK 最多 5 张（§15.3） | 附全集或分页全集 |
+| 排序 | RRF + 证据（§13） | 通常按 date / status / 字典序 |
+
+举例：用户有 47 张 OPEN 待办。在相关性管线下的命运：
+- BM25 top-50：标题含"待办"者排前；标题"周五前发邮件给客户"者排后或落榜
+- 向量 top-50："我的全部待办"对每张待办的语义相似度都低，召回随机
+- STRONG 分类：标题"周五前发邮件给客户"因不含"待办"bigram，§14.3 REJECTED 第 3 条直接丢弃
+- ASK 附卡：5 张上限 → 42 张不可见 → 模型用 5 张冒充全集
+
+§13 写得再细、§14 阈值调得再准都救不了。相关性管线与集合管线**目标函数相反**，必须在 `QueryIntent` 层分流。
+
+### 26.2 QueryIntent
+
+```java
+enum QueryIntent {
+    POINT,         // 单点查询，走混合检索
+    COLLECTION,    // 集合查询，走结构化枚举
+    HYBRID         // 混合（点 + 集合），少见
+}
+
+record StructuredScope(
+    StatusFilter status,        // open / closed / all
+    String whoAnchor,            // user / project / meeting
+    LocalDate fromInclusive,
+    LocalDate toInclusive,
+    List<String> requiredTags   // 结构化标签过滤
+) {}
+```
+
+`RetrievalQuery`（§6.1）增加两个字段：
+
+```java
+record RetrievalQuery(
+        String original,
+        String semanticText,
+        LocalDate fromInclusive,
+        LocalDate toInclusive,
+        List<QueryGroup> lexicalGroups,
+        List<String> entityAnchors,
+        boolean searchable,
+        QueryIntent intent,             // 新增
+        StructuredScope scope) {        // 新增
+}
+```
+
+### 26.3 意图分类规则
+
+`RetrievalQueryPlanner` 在 §6.2 规范化阶段增加意图分类：
+
+**集合触发词**（命中任一即候选 COLLECTION）：
+
+```text
+全部
+所有
+有哪些
+哪些
+还有哪些
+还有什么
+列出
+枚举
+清单
+待办清单
+未完成清单
+```
+
+**结构化锚点**（命中任一即填充 `StructuredScope`）：
+
+- 显式 `who=...` 或 `@用户名` → `whoAnchor`
+- 显式 `project=...` 或"项目 X / 会议 X" → `whoAnchor`（项目/会议统一走 whoAnchor 字段，类型由卡片 type 决定）
+- 显式 `status=open/closed/active/archived` → `status`
+- 显式日期范围 → `fromInclusive` / `toInclusive`
+
+**判定**：
+
+- 命中集合触发词 → `COLLECTION`，`scope` 从剩余文本与锚点提取
+- 未命中集合触发词但有结构化锚点 → 默认 `POINT`，但 `scope` 注入到原管线的"分类前硬过滤"（见 §26.5）
+- 无触发词且无锚点 → `POINT`
+
+HYBRID 触发条件：用户既问"我的待办里和 XX 相关的"（集合触发 + 点查询约束）。HYBRID 通道先执行 COLLECTION 枚举得到全集，再对全集跑 POINT 管线排序与截取。
+
+### 26.4 集合枚举通道
+
+`KnowledgeStore.searchAsync` 在收到 `COLLECTION` 或 `HYBRID` 时分流：
+
+```
+if (intent == COLLECTION || intent == HYBRID)
+    return structuredEnumerate(scope, originalText)
+else
+    return hybridPipeline(query)
+```
+
+`structuredEnumerate` 不走 FTS5、不走 embedding、不走 RRF：
+
+```sql
+SELECT path, title, snippet, who, project, date, status, body_start, body_end
+FROM cards_meta
+WHERE (?1 IS NULL OR status = ?1)
+  AND (?2 IS NULL OR who = ?2)
+  AND (?3 IS NULL OR date >= ?3)
+  AND (?4 IS NULL OR date <= ?4)
+ORDER BY
+  CASE ?5 WHEN 'date' THEN date END DESC,
+  CASE ?5 WHEN 'status' THEN status END ASC,
+  path ASC;
+```
+
+`cards_meta` 必须有索引：
+
+```sql
+CREATE INDEX idx_meta_scope ON cards_meta(status, who, date);
+```
+
+返回结果直接构造成 `SearchHit`，`relevance = ENUMERATED`，`sources = {LEXICAL_ORIGINAL}`（标记为"枚举通道"以与相关性命中区分），不进入 STRONG/WEAK/REJECTED 分类。
+
+### 26.5 范围注入到 POINT 管线
+
+POINT 查询也允许带 `scope`——比如"张三的邮箱"这种看起来像点查询但隐含 `who=张三` 过滤。`scope` 在召回前作为 SQL 级硬过滤执行，不进入 RRF：
+
+```
+hybridPipeline(query):
+    candidates = ftsRecalls(query)         // 原词 + 同义词 top 50 each
+    candidates = candidates.filter(scope)  // SQL 级 status/who/date 硬过滤
+    candidates = candidates ∪ vectorTop(query, scope)
+    ranked = weightedRRF(candidates)
+    classified = relevancePolicy(ranked)
+    return classified
+```
+
+这样"张三的邮箱"中所有非张三的卡片在召回后立刻被 SQL 过滤掉，不参与 RRF 计算，确保 scope 不会在重排里被淹没。
+
+### 26.6 相关性分类扩展
+
+§14 增加 `ENUMERATED` 分支，与 REJECTED 平级但语义独立：
+
+```java
+enum Relevance {
+    STRONG,
+    WEAK,
+    ENUMERATED   // 新增：集合通道返回，与 STRONG/WEAK 互斥
+}
+```
+
+判定规则：
+
+- `structuredEnumerate` 返回的命中 → `ENUMERATED`
+- POINT 管线返回的命中 → `STRONG` / `WEAK` / `REJECTED`（不变）
+
+§13.4 稳定排序新增规则：
+
+1. relevance：`STRONG` > `WEAK` > `ENUMERATED` > `REJECTED`
+2. ENUMERATED 之间按 `date DESC` 或 `path ASC`（由请求参数决定）
+3. 其余规则不变
+
+### 26.7 ASK 附卡行为
+
+#### 26.7.1 POINT 行为（不变）
+
+`AskGrounding.prepareAsync` 仍只附 STRONG，最多 5 张。无 STRONG 时不附卡。
+
+#### 26.7.2 COLLECTION 行为（新增）
+
+`AskGrounding` 在 `intent == COLLECTION` 时切换附卡策略：
+
+- 附"集合摘要"：总数 + 状态分布 + 命中锚点（who/project/date 摘要）
+- 附"代表卡"：从枚举结果中按 `date DESC` 取前 5 张作为代表性正文
+- 提示词独立模板，明确告诉模型"以下是 OPEN 待办的全部 N 张的代表卡，请基于全集而非代表卡回答"
+- 无穷举结果时（scope 过滤后为空集）返回空集摘要"未找到符合范围的 OPEN 卡片"
+
+#### 26.7.3 HYBRID 行为（新增）
+
+`AskGrounding` 在 `intent == HYBRID` 时：
+
+- 先执行 COLLECTION 枚举得到全集
+- 对全集执行 POINT 管线排序与截取（最多 5 张 STRONG）
+- 附"全集上下文"（总数 + 集合摘要）+ 5 张代表卡
+
+### 26.8 /find 与 knowledge_search 行为
+
+**`/find`**：
+
+- POINT：STRONG/WEAK 分区显示（不变）
+- COLLECTION：显示"找到 N 张 OPEN" + 全集列表（按 date / path 排序）+ "没有更多隐藏结果"
+- HYBRID：先显示集合摘要，再显示 STRONG/WEAK
+
+**`knowledge_search`**（AgentScope 工具）：
+
+- POINT：先 STRONG 后 WEAK，最多 20 张（不变）
+- COLLECTION：返回全集 + `enumerated=true` 标记 + 集合摘要
+- HYBRID：返回集合摘要 + 最多 20 张 STRONG/WEAK
+- 返回结构中新增 `intent: "POINT" | "COLLECTION" | "HYBRID"` 字段
+
+### 26.9 检索状态与降级
+
+`RetrievalState` 在 COLLECTION 通道下与 POINT 通道独立：
+
+- `structuredEnumerate` 走 `cards_meta` 直查，不依赖 FTS5 / embedding
+- POINT 管线降级（§17.4）不影响 COLLECTION 通道
+- COLLECTION 通道唯一故障场景：`cards_meta` 表损坏或缺索引 → 返回 `RetrievalState.UNAVAILABLE`，但 POINT 通道不受影响
+
+§17.5 UI 状态文本增加：
+
+```text
+集合索引不可用，相关性检索仍可用
+[重建集合索引]
+```
+
+### 26.10 质量门禁
+
+§20.2 增加：
+
+- 集合查询 `Recall@全集 = 100%`（黄金集需覆盖至少 50 条集合型查询）
+- `who/project` scope 误召回率为 0（不应返回不属于 scope 的卡片）
+- COLLECTION 通道 P95 < 30ms（SQL 直查，1 万卡片规模）
+- HYBRID 通道 P95 < POINT P95 × 1.5
+- COLLECTION 通道不返回 STRONG/WEAK，避免模型把枚举结果误判为相关性命中
+- HYBRID 集合部分必须穷举（不允许截断后冒充全集）
+
+### 26.11 单元与集成测试
+
+§20.4 增加：
+
+`RetrievalQueryPlanner`：
+
+- 集合触发词识别（全部/所有/有哪些/列出/枚举/待办清单…）
+- 结构化锚点提取（who/project/status/date）
+- HYBRID 判定
+- 触发词不与实体锚点冲突（"张三的所有待办" → whoAnchor=张三 + COLLECTION）
+
+`StructuredEnumerator`：
+
+- status/who/project/date 硬过滤正确性
+- 全集无截断（100 张 OPEN 待办 → 返回 100 张）
+- 索引缺失时降级 UNAVAILABLE
+- scope 冲突时（who=张三 AND who=李四）拒绝执行并报错
+
+`AskGrounding`：
+
+- POINT 路径仍只附 5 张 STRONG
+- COLLECTION 路径附"全集摘要 + 5 张代表卡"
+- HYBRID 路径先枚举后排序
+- 提示词模板互不污染（POINT 提示词不含"全集"语义，COLLECTION 提示词不含"STRONG"语义）
+
+§20.5 集成测试增加：
+
+- 50 条集合查询全召回
+- scope 过滤严格（"张三的待办"不返回李四的）
+- POINT 管线降级时 COLLECTION 通道仍可用
+- COLLECTION 通道降级时 POINT 管线仍可用
+- 三个入口（ASK / `/find` / `knowledge_search`）的 COLLECTION 行为一致
+
+### 26.12 交付顺序
+
+§24 步骤序列前增加步骤 0：
+
+```
+0. 扩展 RetrievalQuery 增加 intent/scope；实现意图分类器与 StructuredEnumerator。
+   此步骤独立可交付：纯 SQL 通道，不依赖 FTS5 修正、向量、同义词。
+   验证集合查询 Recall@全集 = 100%。
+```
+
+后续步骤 1–11 不变，但需要满足：
+
+- 步骤 3（双词法通道）必须接受 `scope` 注入（§26.5）
+- 步骤 4（SearchResponse）必须支持 `ENUMERATED` 相关性与 `intent` 字段
+- 步骤 9（混合 RRF）必须在 scope 过滤后执行
+
+### 26.13 错误空结果语义
+
+§17.4 已有原则"不可用或降级零结果不能解释为'未归档'"。本节强化：
+
+- COLLECTION 返回空集 + `RetrievalState.READY` → 必须区分"无匹配"与"scope 过窄"
+  - 默认行为：返回"未找到符合范围 (who=张三, status=open) 的卡片"，提示用户放宽 scope
+  - 不返回普通空列表
+- COLLECTION 返回空集 + `RetrievalState.UNAVAILABLE` → "集合索引不可用，请尝试相关性检索或重建索引"
+- HYBRID 中 COLLECTION 部分为空 → 退化为 POINT 行为，并标注"集合部分为空"
+
+### 26.14 完成定义扩展
+
+§25 增加：
+
+- COLLECTION 通道独立可工作，不依赖 FTS5 / embedding
+- 集合查询全集召回率 100%
+- POINT / COLLECTION / HYBRID 三种意图在 ASK / `/find` / `knowledge_search` 三个入口行为一致
+- scope 硬过滤在召回前执行，不被 RRF 覆盖
+- ENUMERATED 与 STRONG/WEAK/REJECTED 互斥，提示词模板互不污染
+- COLLECTION 通道降级不影响 POINT 通道
