@@ -293,3 +293,303 @@ end-to-end P95 < 100ms
 - §20.1 黄金集 300–500 卡的标注质量评估方法（inter-annotator agreement）
 
 这些点的判断都依赖未来实测或上游产品决策，本评审不做猜测。
+
+---
+
+## 补充评审（第二轮）
+
+本节为第二轮深度评审，聚焦实现落地层面的硬冲突与隐性 bug。**与第一轮评审的关系**：本节不再重复"架构合理"等已被采纳的判断，只标注新增点（用 `【新增】`）和与第一轮互补的细化点（用 `【细化】`）。
+
+### S1. 硬冲突：必须收敛才能写实现计划 【新增】
+
+#### S1.1 §14.1 STRONG 条件 5 的合成谓词歧义
+§14.1 条件 5：
+> 所有实体锚点由用户原词命中，同义词 group 覆盖率为 100%，且候选同时位于同义词 BM25 top 10 和向量 top 10。
+
+`originalCoverage` 已经在 §13.3 显式定义，等价于"原词 group 命中率"。同义词 group 覆盖率 100% 不等于原词覆盖率 100%——但条件 5 把"原词命中实体"与"同义词 100% + 向量 top 10"绑成 STRONG，写法上会让实现者用两种合理解读，对应不同的测试。
+
+**建议**：拆为"`originalCoverage` = 100% + `allEntityAnchorsMatched` + synonym top 10 + vector top 10"，去掉"由用户原词命中实体"这一合成谓词。
+
+#### S1.2 §12.2 vs §13.3 多 chunk path 在 RRF 与证据上的去重不一致
+§12.2 明确"同一 path 多个 chunk 只保留 cosine 最高的进入向量卡片排名"；但 §13.2 RRF 公式、`SearchHit.vectorRank` 与 `cosine` 字段都没说明"是否在 path 压缩后取值"。
+
+**风险**：RRF 用 path 级排名，但 `vectorRank` 若来自 chunk 级，则 path 级 RRF 与 chunk 级 `vectorRank` 不一致，证据审计无法解释 `vectorRank=3` 对应哪个 chunk。
+
+**建议**：§13 增加明文：在 RRF 前先按 path 压缩 `VectorPathRank`（保留最强 chunk 的 cosine 与 chunk id）；`SearchHit.vectorRank` 与 `cosine` 一律是 path 压缩后值；增加 `topChunkId` 字段供 UI 按 chunk 定位。
+
+#### S1.3 §7.5 "批量证据 SQL" 与 8 group 上限的执行次数没说清
+§7.5 称"每个查询最多 8 个 group，因此最多执行有限、可预测的批量证据 SQL"。但 8 group ×（original group / synonym group / 字段限定 MATCH 命中）= 最多 ~40 条单次往返。
+
+**风险**：SQLite 每次往返 0.3–1ms，8–40ms 直接吃光 §16.3 的 FTS 30ms 预算。
+
+**建议**：
+- 把"按 group 单独 MATCH"显式写出，每次往返固定 ≤ 8 次
+- 或把 8 个 group 一次性 union 进单条 `MATCH` 表达式，由 SQLite 内部处理
+- 把"最多 N 条 SQL"作为可断言指标写入 §17 或 §21 验收
+
+#### S1.4 §10.1 schema 缺 CHECK 约束与状态枚举完整性 【细化，与第一轮 4.3 一致】
+§10.1 中 `embedding_models.state` 与 `embedding_jobs.state` 都没 CHECK 约束；§17.1 模型状态 `UNINITIALIZED/VALIDATING/LOADING/READY/DEGRADED/CLOSED` 也没出现在 schema 里。
+
+**建议**：补 `CHECK(state IN (…))`；§18 显式给出"旧 fingerprint 行 → 孤儿 → 延迟删除"的 SQL 模板。
+
+### S2. §7.1 schema 漏 status 字段 【新增 · 真实 bug】
+
+§7.1：
+```sql
+CREATE VIRTUAL TABLE cards_fts USING fts5(
+  path, title, aliases, body, type, who, date,
+  tokenize = 'unicode61'
+);
+```
+
+§6.4 与 §9.1 都把 `status` 列为高价值字段（纳入 embedding 规范化文本、作为事实过滤维度）；§14.3 REJECTED 也包含"日期或状态硬过滤失败"。
+
+**结论**：FTS5 表声明漏 `status`，与文档其余部分自相矛盾，必须补上。
+
+**建议**：
+```sql
+CREATE VIRTUAL TABLE cards_fts USING fts5(
+  path, title, aliases, body, type, who, date, status,
+  tokenize = 'unicode61'
+);
+```
+
+`bm25()` 权重序列相应增加一档（如 `status=3`）。
+
+### S3. §14.1 STRONG 条件 3 的"40%"阈值分母未定义 【新增】
+
+> "原词覆盖至少 40%"
+
+§6.4 提到 8 group 上限；§13.3 `originalCoverage` 的分母是 group 数还是 unit 数？若 group 数，则 8 × 40% = 3.2 个（不可达 3 个或 4 个，二者都得 100% 或 50%）。
+
+**建议**：写明分母为 `originalGroups`（共 8），改为"至少命中 4 个 group（共 8）"或类似整数表达。
+
+### S4. §13.2 RRF "missing rank" 语义 【新增 · 小问题】
+
+公式中"候选不在某列表时该项为 0"。**应显式写明**：是"分子 = 0"还是"整项 = 0"。两者数值差 `1/60`；在 RRF 中虽小，但 §20.4 单元测试要断言缺失路径的 RRF 计算。
+
+**建议**：补一句"missing rank → 分子为 0 → 该项贡献为 0"。
+
+### S5. 隐含多用户数据泄漏风险 【新增】
+
+§6.3 提到"每个用户维护进程内实体词典"；§12 vector snapshot 是按 path，无 user 维度；§15.1 `SearchRequest` 没有 `userId` 字段。
+
+**风险**：user A 的查询可能命中 user B 的卡片（如果 path 共享或 metadata 中含 user）。
+
+**建议**：
+- §15.1 增加 `userId` 字段
+- §10.1 schema 与 §12.1 snapshot 增加 `user_id` 列
+- §15.3 / §15.4 / §17.4 显式声明"user 过滤在召回前/分类前强制执行，不允许跨用户命中"
+- §20.5 集成测试加入跨用户隔离用例
+
+### S6. §15.2 `Reason` 类型未定义 【新增】
+
+`SearchHit.reasons: List<Reason>` 没有枚举定义。文档多处提到"显示命中原因"（§15.5、§20.4），但 reason 的来源、本地化、是否进入模型 prompt 都没说。
+
+**建议**：定义 `Reason` 枚举（如 `ENTITY_ANCHOR_MATCHED`, `EXACT_TITLE_HIT`, `ORIGINAL_GROUP_COVERAGE_60`, `VECTOR_TOP_10`, `SYNONYM_GROUP_LICENSE` 等），并明确"reasons 只进入 UI 与诊断，不进入模型 prompt"。
+
+### S7. §24 步骤 3→4 中间态歧义 【新增】
+
+§24 步骤 3 实现"加权 BM25"，步骤 4 改造三个入口到新 `SearchResponse`。中间态如何存在？
+
+**建议**：合并步骤 3/4 为"双词法通道 + SearchResponse + 三入口切换"，FindQuery 适配器删除作为步骤产出；或保留拆分但写明"步骤 3 完成时新 `SearchResponse` 已通过 FindQuery 适配器暴露"。
+
+### S8. §22 缺 retention 与未命中 group 可观测 【新增】
+
+§22 允许记录命中 synonym group ID，但**未要求记录未命中 group**——这是定位"原词覆盖率不足"最直接的诊断信息。
+
+§22 也没规定日志保留周期。
+
+**建议**：
+- 允许记录 `groupId + matched: bool`（不含原词内容）
+- 加一条"诊断日志保留 ≤ 7 天，超过自动清理，不进入 crash report"
+
+### S9. §18 双版本升级缺回滚窗口 【新增】
+
+§18 把旧 fingerprint 标 RETIRED 后延迟删除，但没说：
+- RETIRED 状态保留多久
+- 触发回滚是手动还是自动
+- 触发条件是什么（用户报告质量下降？健康检查指标？）
+
+**建议**：定义 RETIRED 保留窗口（如 7 天）；定义回滚触发条件（手动 + 健康指标双触发）；定义回滚 SQL（恢复旧 fingerprint 为 active，新 fingerprint 标 RETIRED）。
+
+### S10. §23 安全开关语义未完全自洽 【细化，与第一轮 7.5 一致】
+
+§23 `-Dkelly.semanticSearch=false` 时不删向量、不创建新 job；再次开启后哪些 chunk 被重建没说清。
+
+**建议**：明确"再次开启后只对 hash 与现有向量不匹配的 chunk 重建；其余保留"。
+
+### S11. §6.2 vs §6.4 执行顺序歧义 【新增】
+
+§6.2 "删除问句噪声短语" 与 §6.4 "生成 CJK bigram" 之间的执行顺序未定。先做 bigram 再删除会形成跨边界 bigram（恰好是 §14.3 REJECTED 第 3 条要防御的）。
+
+**建议**：在 §6.2 末尾或 §6.4 开头加一句"噪声短语按词法文本顺序删除，删除点不参与 bigram 拼接"。
+
+### S12. §21 性能验收缺硬件规格 【新增】
+
+§21 没有规定基准机器 CPU 型号、最低 SSD 规格、warmup 状态。不同开发者机器无法对齐。
+
+**建议**：拆 §21 为性能验收（机器型号清单 + warmup 规则）与平台验收（CPU 架构 + OS）。
+
+### S13. 与第一轮评审的差异表
+
+| 点 | 第一轮 | 第二轮 | 关系 |
+|---|---|---|---|
+| §7.5 证据 SQL | 承诺"避免 N+1"但路径未明 | 给出 8 group × 5 类 ≈ 40 次往返的具体估算 | 细化 + 量化 |
+| §10.1 state enum | 缺 RETIRED | 加 CHECK 约束 + 旧 fingerprint 删除 SQL 模板 | 互补 |
+| §16.3 性能预算 | P95 偏乐观 | 加 P99 上限 + GC 参数 | 一致 |
+| tokenizer 路径 | §8.4 与现实生态不符 | （未重复） | 第一轮独有 |
+| §7.1 status 漏字段 | （未提） | 新发现，**真实 bug** | 第二轮独有 |
+| 多用户隔离 | （未提） | §6.3/§12/§15.1 缺 user 维度 | 第二轮独有 |
+| §14.1 条件 5 歧义 | （未提） | 合成谓词歧义 | 第二轮独有 |
+| §24 步骤 3→4 | （未提） | 中间态歧义 | 第二轮独有 |
+
+### S14. 修订优先级（合并两轮）
+
+| P0 | §8.4 tokenizer 路径二选一（第一轮） |
+|---|---|
+| P0 | §7.1 schema 漏 status 字段（S2） |
+| P0 | §14.1 条件 5 谓词明确化（S1.1） |
+| P0 | §12.2/§13 多 chunk path 去重一致性（S1.2） |
+| P0 | §7.5 证据 SQL 模式与往返次数（S1.3） |
+| P1 | §16.3 P99 与 GC 参数（第一轮 5.3） |
+| P1 | §12.1 SIMD 路径明确（第一轮 5.2） |
+| P1 | §10.1 CHECK 约束与 RETIRED enum（S1.4 / 第一轮 4.3） |
+| P1 | §5 多用户隔离（S5） |
+| P2 | §9.3 代码块切分策略（第一轮 6.2） |
+| P2 | §6.2 停用短语扩充 + 跨边界 bigram 测试（第一轮 3.3） |
+| P2 | §22 日志 retention + 未命中 group 可观测（S8） |
+| P2 | §23 开关再开启后重建语义（S10） |
+| P3 | §6.2/§6.4 执行顺序（S11） |
+| P3 | §21 硬件规格（S12） |
+| P3 | §18 回滚窗口（S9） |
+
+---
+
+## 第三轮评审：产品语义层
+
+前两轮覆盖工程实现与可观测性。本轮聚焦**产品语义层缺口**——相关性检索管线的契约与集合型查询的契约在数学结构上不可调和，必须新增独立通道。`【新增】` 表示本轮独有发现。
+
+### T1. 相关性检索 vs 集合型意图的根本矛盾 【新增】
+
+相关性检索的目标函数是"从候选里挑最相关的"，集合型意图（"我的全部待办"、"会议 X 还有哪些 OPEN"）的目标函数是"穷举所有满足结构化约束的卡片"。两者在以下四个契约上对立：
+
+| 维度 | 相关性管线契约 | 集合型意图契约 |
+|---|---|---|
+| 召回上限 | top-50（§12.3 / §16.3 性能预算基于此） | 必须穷举全集，无上限 |
+| 阈值 | STRONG/WEAK/REJECTED 三分类（§14） | 结构化字段匹配即召回 |
+| 附卡数量 | ASK 最多 5 张（§15.3） | 附全集或分页全集 |
+| 排序 | RRF + 证据（§13） | 通常按 date / status / 字典序 |
+
+举例：用户有 47 张 OPEN 待办。"我的全部待办"在相关性管线下的命运：
+- BM25 top-50：标题含"待办"者排前；标题"周五前发邮件给客户"者排后或落榜
+- 向量 top-50："我的全部待办"对每张待办的语义相似度都低，召回随机
+- STRONG 分类：标题"周五前发邮件给客户"因不含"待办"bigram，§14.3 REJECTED 第 3 条直接丢弃
+- ASK 附卡：5 张上限 → 42 张不可见 → 模型用 5 张冒充全集
+
+§13 写得再细、§14 阈值调得再准都救不了。相关性管线与集合管线的**目标函数相反**。
+
+### T2. 为什么必须在 `QueryIntent` 层分流 【新增】
+
+把 FORCE_COVER 塞进相关性管线靠"放宽阈值"或"放大 top-N"是错的，原因有三：
+
+1. **召回上限不可调和**：top-50 是 P95 < 100ms 性能契约的基础；放大到 top-5000 会立刻让性能预算破产。集合查询可接受毫秒级 SQL 直查，但走的是另一条路径。
+2. **STRONG 分类把弱词法候选砍掉**：§14.1 STRONG 条件 1 要求原词 group 覆盖率 ≥ 60%，§14.3 REJECTED 第 3 条直接拒绝跨边界噪声 bigram。一张 OPEN 待办只要没有"待办"字面命中，就被砍——但集合查询的判定维度是 `status=open`，**不是**词法覆盖。
+3. **5 张附卡上限语义崩坏**：ASK 最多 5 张的承诺（§15.3）建立在"附卡是给模型提供强证据"上。集合查询要附的是"全集"，是模型回答"我有 N 张待办…"的事实依据。两类附卡的提示词结构、token 预算、模型行为约束都不同。
+
+### T3. 为什么必须带结构化 scope 【新增】
+
+不带 scope 的 FORCE_COVER 会把"我的全部待办"和"会议 X 的待办"合并成同一条 SQL：
+
+```sql
+SELECT path FROM cards_meta WHERE status='open'
+```
+
+这两条查询语义完全不同：
+- "我的全部待办" → `status=open AND who=@current_user`
+- "会议 X 的待办" → `status=open AND project=meeting-X`
+- "上周创建的待办" → `status=open AND date >= today-7`
+
+`who` / `project` / `date` 必须是 **SQL 级的过滤条件**，不能在 RRF 之后作为"软偏好"。否则相关性管线把无关卡片送进 top-50，再被 RRF 重新排序，scope 就丢了。
+
+### T4. 建议的产品语义契约 【新增 · 设计补充】
+
+```java
+enum QueryIntent {
+    POINT,         // 单点查询，走混合检索
+    COLLECTION,    // 集合查询，走结构化枚举
+    HYBRID         // 混合（点 + 集合），少见
+}
+
+record StructuredScope(
+    StatusFilter status,        // open / closed / all
+    String whoAnchor,            // user / project / meeting
+    LocalDate fromInclusive,
+    LocalDate toInclusive,
+    List<String> requiredTags   // 结构化标签过滤
+) {}
+```
+
+`RetrievalQueryPlanner` 在 §6.1 阶段多产出一个 `QueryIntent` + `StructuredScope`：
+- 命中集合触发词（全部、列出、哪些、都有哪些、还有什么没…）→ `COLLECTION`
+- 命中 `who/project/status/date` 显式锚点 → 提取 `StructuredScope`
+- 没有触发词且没有结构化锚点 → `POINT`，走原管线
+
+`KnowledgeStore.searchAsync` 分流：
+
+```
+if (intent == COLLECTION)
+    return structuredEnumerate(scope, originalText)  // SQL 直查
+else
+    return hybridPipeline(query, scopeFiltersBeforeRRF)
+```
+
+`structuredEnumerate` 不走 FTS5、不走 embedding、不走 RRF；直接 `cards_meta` 表 + `status/who/project/date` 索引，返回全集（按集合规模阈值决定分页或全量）。
+
+### T5. 对原设计文档各章节的影响 【新增 · 修改点清单】
+
+| 章节 | 缺口 | 改动 |
+|---|---|---|
+| §6.1 `RetrievalQuery` | 无 `QueryIntent` 字段 | 增加 `intent` + `scope` |
+| §6.2 规范化 | 没区分意图触发词 | 触发词列表独立成节，引用 §6.2 噪声处理 |
+| §13 候选 | 强制 top-50 | COLLECTION 不进入此节，新增 §13 替代路径 |
+| §14 分类 | STRONG/WEAK/REJECTED 全为相关性概念 | 增加 §14.4 ENUMERATED（与 REJECTED 平级，语义独立） |
+| §15.3 ASK | 5 张上限 | 增加 §15.3.1 COLLECTION 附卡：附"全集摘要 + N 张代表卡"，提示词结构独立 |
+| §15.5 /find | 显示 top-N 命中 | 增加 "找到 N 张 OPEN" 集合视图 |
+| §20.2 质量门禁 | 没有"集合召回率"指标 | 增加 "集合查询 Recall@全集 = 100%"、`who/project` scope 误召回率为 0 |
+| §24 步骤 | 1–11 全是相关性管线 | 增加步骤 0 或步骤 4.5：意图分类 + 结构化枚举通道 |
+
+### T6. 与前两轮评审的关系
+
+| 维度 | 第一/二轮 | 第三轮 |
+|---|---|---|
+| 关注点 | 工程实现、可观测性 | 产品语义 |
+| 触发条件 | 实现 bug、性能风险 | 数学结构冲突 |
+| 解决路径 | 修代码、加测试 | 新增独立通道 |
+| 与现有管线关系 | 同一管线内优化 | 平行管线 |
+
+`QueryIntent` 分流是产品语义层的根本决策，必须在 §6.1 实现阶段就纳入，而不是等到发现"集合查询全错"再补。FORCE_COVER 不是调阈值，是新通道。
+
+### T7. 修订优先级（合并三轮）
+
+| 优先级 | 项 | 来源 |
+|---|---|---|
+| P0 | §8.4 tokenizer 路径二选一 | 第一轮 |
+| P0 | §7.1 schema 漏 status 字段 | 第二轮 S2 |
+| P0 | §14.1 条件 5 谓词明确化 | 第二轮 S1.1 |
+| P0 | §12.2/§13 多 chunk path 去重一致性 | 第二轮 S1.2 |
+| P0 | §7.5 证据 SQL 模式与往返次数 | 第二轮 S1.3 |
+| **P0** | **§6.1 QueryIntent + StructuredScope 分流** | **第三轮 T4** |
+| P1 | §16.3 P99 与 GC 参数 | 第一轮 5.3 |
+| P1 | §12.1 SIMD 路径明确 | 第一轮 5.2 |
+| P1 | §10.1 CHECK 约束与 RETIRED enum | 第二轮 S1.4 |
+| P1 | §5 多用户隔离 | 第二轮 S5 |
+| P1 | §15.2 Reason 枚举定义 | 第二轮 S6 |
+| P2 | §9.3 代码块切分策略 | 第一轮 6.2 |
+| P2 | §6.2 停用短语扩充 + 跨边界 bigram 测试 | 第一轮 3.3 |
+| P2 | §22 日志 retention + 未命中 group 可观测 | 第二轮 S8 |
+| P2 | §23 开关再开启后重建语义 | 第二轮 S10 |
+| P3 | §6.2/§6.4 执行顺序 | 第二轮 S11 |
+| P3 | §21 硬件规格 | 第二轮 S12 |
+| P3 | §18 回滚窗口 | 第二轮 S9 |
+| P3 | §24 步骤 3→4 中间态 | 第二轮 S7 |
