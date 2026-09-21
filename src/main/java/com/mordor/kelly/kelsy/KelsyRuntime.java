@@ -137,8 +137,11 @@ public final class KelsyRuntime implements AutoCloseable {
                                     Function<KelsyConfig, AssistantService> factory) {
         ConfigLoader.ensureAndHasApiKey(paths);
         WorkspaceSeeder.seed(paths.workspace());
-        WorkspaceSeeder.seed(KnowledgeStore.knowledgeRoot(paths.workspace(), username));
-        upgradeKnowledge(KnowledgeStore.knowledgeRoot(paths.workspace(), username));
+        // bootstrap 把「种子 + 历史双层嵌套迁移」集中到一个调用，避免多个入口各自
+        // 只做一半而把遗留内容留在 <userRoot>/<username>/ 下，让新版 KnowledgeStore
+        // 看不到它们。
+        Path userRoot = KnowledgeStore.bootstrap(paths.workspace(), username);
+        upgradeKnowledge(userRoot);
         return new KelsyRuntime(paths, factory);
     }
 

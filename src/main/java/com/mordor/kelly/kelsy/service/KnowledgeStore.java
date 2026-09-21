@@ -47,6 +47,7 @@ import com.mordor.kelly.common.Diagnostics;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -151,6 +152,258 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
      */
     public static KnowledgeStore forUser(Path workspace, String username) {
         return new KnowledgeStore(knowledgeRoot(workspace, username));
+    }
+
+    /**
+     * 引导（bootstrap）用户知识库根：计算路径 + 播种种子 + 迁移历史双层嵌套。
+     *
+     * <p>三个 caller 都应当走这条入口：
+     * <ul>
+     *   <li>{@code KelsyRuntime.open(...)}</li>
+     *   <li>{@code LocalAssistantService.create(KelsyConfig, String)}</li>
+     *   <li>{@code LocalAssistantService.create(KelsyConfig, String, KnowledgeStore)}</li>
+     * </ul>
+     *
+     * <p>幂等：
+     * <ul>
+     *   <li>种子写入只创建缺失项（{@link WorkspaceSeeder#seed} 内部用 writeIfAbsent）</li>
+     *   <li>迁移在内层目录不存在或已为空时立即返回</li>
+     * </ul>
+     *
+     * <p>为什么不放在 {@link WorkspaceSeeder} 里：迁移属于用户命名空间的额外补救，
+     * 与「共享种子」语义不同；放 {@code KnowledgeStore} 是它本来就在管用户根。
+     *
+     * @param workspace 工作空间根目录（可为裸根；用户级目录会拼接到其下）
+     * @param username  用户名（{@code null}/空 → 退化为裸 workspace；含分隔符抛异常）
+     * @return 计算出的用户知识库根（{@code <workspace>/<username>/} 或裸 workspace）
+     */
+    public static Path bootstrap(Path workspace, String username) {
+        Path knowledgeRoot = knowledgeRoot(workspace, username);
+        WorkspaceSeeder.seed(knowledgeRoot);
+        migrateLegacyDoubleNested(knowledgeRoot, username);
+        return knowledgeRoot;
+    }
+
+    /**
+     * 迁移历史遗留的双层嵌套用户根（{@code <userRoot>/<username>/} → {@code <userRoot>/}）。
+     *
+     * <p>2026-09-21 之前的实现里，旧 AgentScope 工作空间被错误地解析为
+     * {@code <workspace>/<username>/<username>/}，导致用户今早写的会议纪要、日记、
+     * MEMORY.md 等都困在嵌套的内层目录里。Java 端在把知识根收敛到
+     * {@code <workspace>/<username>/} 之后，那批文件对新代码不可见，于是右侧知识库
+     * 面板所有引用都回退到 {@link Read.Missing}。
+     *
+     * <p>本方法在启动时被调用一次：若内层目录存在，就把它的内容合并到外层，然后
+     * 删除空的内层目录。规则：
+     * <ul>
+     *   <li>目标位置不存在 → 直接移动</li>
+     *   <li>目标是文件、源是文件 → 内容相同则删源；不同则警告并保留双方</li>
+     *   <li>目标是目录、源是目录 → 递归合并（同一规则）</li>
+     *   <li>类型冲突（目录 vs 文件）→ 警告并跳过</li>
+     * </ul>
+     *
+     * <p>幂等：内层目录不存在或已为空时立即返回。
+     *
+     * @param userRoot 用户知识库根目录（{@code <workspace>/<username>/}）
+     * @param username 当前用户名（用于定位内层遗留目录；含路径分隔符抛异常）
+     * @return true 表示确实迁移了至少一个条目
+     * @throws IllegalArgumentException 用户名含路径分隔符
+     */
+    public static boolean migrateLegacyDoubleNested(Path userRoot, String username) {
+        if (userRoot == null) {
+            return false;
+        }
+        if (username == null || username.isBlank()) {
+            return false;
+        }
+        if (containsPathSeparator(username)) {
+            throw new IllegalArgumentException(
+                    "username 不可包含路径分隔符：'" + username + "'");
+        }
+        Path root = userRoot.toAbsolutePath().normalize();
+        Path legacy = root.resolve(username).normalize();
+        if (!legacy.startsWith(root) || legacy.equals(root)) {
+            return false;
+        }
+        if (!Files.isDirectory(legacy)) {
+            return false;
+        }
+        try (var stream = Files.list(legacy)) {
+            var children = stream.toList();
+            if (children.isEmpty()) {
+                Files.delete(legacy);
+                Diagnostics.log("kelsy", "removed empty legacy dir %s", legacy);
+                return false;
+            }
+            boolean moved = false;
+            for (Path child : children) {
+                moved |= mergeInto(child, root.resolve(child.getFileName()));
+            }
+            // 合并过程中遗留的内层空目录（递归合并产生的）也顺手清掉，否则后续 reconcile 仍能
+            // 在旧路径上看到空目录条目，悬空感观不变。
+            pruneEmptyDirs(legacy);
+            if (!Files.exists(legacy)) {
+                Diagnostics.log("kelsy", "removed legacy dir %s after migration", legacy);
+            } else {
+                Diagnostics.warn("kelsy", "legacy dir %s not empty after migration; left in place",
+                        legacy);
+            }
+            return moved;
+        } catch (IOException e) {
+            Diagnostics.warn("kelsy", "legacy migration skipped for %s: %s", legacy, e.toString());
+            return false;
+        }
+    }
+
+    /**
+     * 把 {@code source} 合并到 {@code target}（target 可能已存在）。详见
+     * {@link #migrateLegacyDoubleNested(Path, String)} 的合并规则。
+     *
+     * <p>合并目录后会尝试删除递归产生的空子目录，避免在遗留根下残留空壳。
+     */
+    private static boolean mergeInto(Path source, Path target) throws IOException {
+        boolean sourceIsDir = Files.isDirectory(source);
+        boolean targetExists = Files.exists(target);
+        if (!targetExists) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            Diagnostics.log("kelsy", "migrated %s -> %s", source, target);
+            return true;
+        }
+        boolean targetIsDir = Files.isDirectory(target);
+        if (sourceIsDir && targetIsDir) {
+            boolean any = false;
+            try (var stream = Files.list(source)) {
+                for (Path child : (Iterable<Path>) stream::iterator) {
+                    any |= mergeInto(child, target.resolve(child.getFileName()));
+                }
+            }
+            pruneEmptyDirs(source);
+            return any;
+        }
+        if (sourceIsDir != targetIsDir) {
+            Diagnostics.warn("kelsy",
+                    "legacy merge skipped: type conflict %s (%s) vs %s (%s)",
+                    source, sourceIsDir ? "dir" : "file",
+                    target, targetIsDir ? "dir" : "file");
+            return false;
+        }
+        // 都是文件：内容相同则删源
+        if (Files.mismatch(source, target) == -1L) {
+            Files.delete(source);
+            Diagnostics.log("kelsy", "removed duplicate %s (identical to %s)", source, target);
+            return true;
+        }
+        // 目标位置的内容是 WorkspaceSeeder 留下的空种子（典型表现为纯空白或只有一两个
+        // 头行），而遗留目录里有真实内容时，直接以遗留版本覆盖种子，避免用户今早写的
+        // MEMORY.md 索引被「新代码刚种子化的空文件」悄悄盖掉。
+        if (isLikelySeedTemplate(target) && !isLikelySeedTemplate(source)) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            Diagnostics.warn("kelsy",
+                    "legacy merge overwrote seed at %s (legacy had real content)", target);
+            return true;
+        }
+        // 双方都有真实内容，无法判断哪个更权威 → 保留双方，遗留版本改名 .legacy 让用户人工取舍。
+        Diagnostics.warn("kelsy",
+                "legacy merge kept both: %s and %s differ; renaming legacy to .legacy",
+                source, target);
+        Path renamed = target.getParent().resolve(
+                target.getFileName().toString() + ".legacy");
+        int n = 1;
+        while (Files.exists(renamed)) {
+            renamed = target.getParent().resolve(
+                    target.getFileName().toString() + ".legacy" + n++);
+        }
+        Files.move(source, renamed, StandardCopyOption.REPLACE_EXISTING);
+        return true;
+    }
+
+    /**
+     * 粗略判断一个文件是否仍是 WorkspaceSeeder 留下的「种子模板」状态。
+     *
+     * <p>判定：去除前后空白后与 {@code SEED_FILES} 中任一资源文件的 strip() 后内容
+     * 完全一致即视为种子。其它情况（包括文件不存在、I/O 错误、内容指纹未匹配）一律
+     * 视为「用户已有真实内容」，避免误判覆盖用户笔记。
+     *
+     * <p>这是为了在双层嵌套迁移时避免种子覆盖用户真实内容。误判只会退化到
+     * 「保留双方」分支，不会丢数据。
+     */
+    private static boolean isLikelySeedTemplate(Path file) {
+        try {
+            if (!Files.isRegularFile(file)) {
+                return true;
+            }
+            String text = Files.readString(file).strip();
+            for (String seed : seedFingerprints()) {
+                if (text.equals(seed)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 需要按「种子指纹」比较的 WorkspaceSeeder 资源文件名（位于
+     * {@code /com/mordor/kelly/kelsy/workspace/} 下）。资源原文被一次性读入缓存，
+     * 避免每次合并都打 classpath。
+     */
+    private static final List<String> SEED_FILES = List.of(
+            "MEMORY.md", "AGENTS.md", "KNOWLEDGE.md");
+
+    /** 已 strip() 过的种子指纹缓存。{@code null} 表示尚未加载。 */
+    private static volatile List<String> seedCache;
+
+    private static List<String> seedFingerprints() {
+        List<String> cached = seedCache;
+        if (cached != null) {
+            return cached;
+        }
+        List<String> loaded = new ArrayList<>(SEED_FILES.size());
+        for (String name : SEED_FILES) {
+            try (var in = KnowledgeStore.class.getResourceAsStream(
+                    "/com/mordor/kelly/kelsy/workspace/" + name)) {
+                if (in == null) {
+                    continue;
+                }
+                loaded.add(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).strip());
+            } catch (IOException e) {
+                // 读不到指纹就当无指纹可用：所有现有内容都按「非种子」处理。
+                Diagnostics.warn("kelsy", "seed fingerprint load failed for %s: %s",
+                        name, e.toString());
+            }
+        }
+        seedCache = List.copyOf(loaded);
+        return seedCache;
+    }
+
+    /**
+     * 递归删除目录树中的空目录（自底向上）。仅删除 {@code start} 自身及以下的空目录；
+     * 不会触及 {@code start} 的兄弟节点。
+     */
+    private static void pruneEmptyDirs(Path start) {
+        if (start == null || !Files.isDirectory(start)) {
+            return;
+        }
+        try (var stream = Files.list(start)) {
+            var children = stream.toList();
+            for (Path child : children) {
+                if (Files.isDirectory(child)) {
+                    pruneEmptyDirs(child);
+                }
+            }
+        } catch (IOException e) {
+            return;
+        }
+        // 自底向上扫一遍：再次尝试删自己
+        try (var stream = Files.list(start)) {
+            if (stream.findAny().isEmpty()) {
+                Files.delete(start);
+            }
+        } catch (IOException e) {
+            // 目录仍有内容或权限问题，保留即可
+        }
     }
 
     /**
