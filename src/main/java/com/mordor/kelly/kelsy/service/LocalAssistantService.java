@@ -147,6 +147,17 @@ public final class LocalAssistantService implements AssistantService {
         ToolsConfig toolsConfig = new ToolsConfig();
         toolsConfig.setDeny(List.of("memory_search"));
         KnowledgeStore knowledge = store != null ? store : new KnowledgeStore(knowledgeRoot);
+        // 前置断言：Java 端知识库根必须等于传给 HarnessAgent 的工作目录。
+        // 这条不变量是 todo 扫描、引用路径、AgentScope 文件系统写入三方对齐的前提。
+        // 一旦不一致就会重演「关闭 todo 后 Java 端仍报 open」这类路径分裂 bug。
+        Path storeRoot = knowledge.workspace().toAbsolutePath().normalize();
+        Path expectedRoot = knowledgeRoot.toAbsolutePath().normalize();
+        if (!storeRoot.equals(expectedRoot)) {
+            throw new IllegalStateException(
+                    "KnowledgeStore root does not match user knowledge root. "
+                                    + "store=" + storeRoot + " expected=" + expectedRoot
+                                    + " userId=" + userId);
+        }
         boolean closeStore = ownsStore || store == null;
         HarnessAgent agent = HarnessAgent.builder()
                 .name("tars")

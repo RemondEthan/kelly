@@ -561,7 +561,7 @@ Do not require the lexical engine to pass the later semantic-only +15 percentage
 Run:
 
 ```bash
-mvn -q -Dtest='com.mordor.kelly.kelsy.**.*Test' test
+mvn -q test
 ```
 
 Expected: PASS with the default slow group excluded.

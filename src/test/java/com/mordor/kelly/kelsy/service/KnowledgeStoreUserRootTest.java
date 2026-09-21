@@ -8,6 +8,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KnowledgeStoreUserRootTest {
@@ -34,5 +35,32 @@ class KnowledgeStoreUserRootTest {
     void knowledgeRootJoinsUsername() {
         assertEquals(dir.resolve("remond").toAbsolutePath().normalize(),
                 KnowledgeStore.knowledgeRoot(dir, "remond"));
+    }
+
+    @Test
+    void knowledgeRootRejectsPathSeparators() {
+        // 这些都是曾经/可能把知识根嵌成多层子目录的违规用户名，必须直接报错而不是静默嵌套
+        for (String bad : new String[]{
+                "ksw/ksw",      // 真实事故：双嵌
+                "ksw\\ksw",     // Windows 风格分隔符
+                "ksw:sub",      // Windows 盘符冒号
+                "ksw\u0000x",   // NUL 控制字符
+                "/abs/path",    // 绝对路径
+                "a/b"           // 普通正斜杠
+        }) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> KnowledgeStore.knowledgeRoot(dir, bad),
+                    "应当拒绝 username: " + bad);
+        }
+    }
+
+    @Test
+    void knowledgeRootBlankUsernameReturnsBase() {
+        assertEquals(dir.toAbsolutePath().normalize(),
+                KnowledgeStore.knowledgeRoot(dir, ""));
+        assertEquals(dir.toAbsolutePath().normalize(),
+                KnowledgeStore.knowledgeRoot(dir, null));
+        assertEquals(dir.toAbsolutePath().normalize(),
+                KnowledgeStore.knowledgeRoot(dir, "   "));
     }
 }

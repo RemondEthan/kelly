@@ -562,7 +562,7 @@ Expected: warmed 20K exact scan P95 below 30ms; test fails on percentile breach 
 Run:
 
 ```bash
-mvn -q -Dtest='com.mordor.kelly.kelsy.retrieval.embedding.**.*Test,com.mordor.kelly.kelsy.retrieval.vector.**.*Test,RetrievalLifecycleTest' test
+mvn -q -Dtest='*Embedding*Test,*Vector*Test,RetrievalLifecycleTest' test
 ```
 
 Expected: PASS.

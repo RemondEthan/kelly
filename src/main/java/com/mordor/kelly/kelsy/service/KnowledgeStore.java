@@ -156,21 +156,47 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
     /**
      * 计算用户知识库的根目录路径。
      *
+     * <p>用户名会被当成 <b>单层</b> 目录名附加到 workspace 下，<b>禁止</b>含任何路径分隔符
+     * （{@code /} {@code \} {@code :}，或 NUL 等控制字符）。这是为了防止
+     * {@code "ksw/ksw"} 这类嵌套用户名把知识根嵌成多层子目录，导致 Java 端
+     * {@link com.mordor.kelly.kelsy.todo.TodoScanner} 与 AgentScope 助手写入路径不一致。
+     *
      * @param workspace 工作空间根目录
-     * @param username  用户名（可为 null 或空）
+     * @param username  用户名（可为 null 或空；含分隔符将抛 {@link IllegalArgumentException}）
      * @return 用户知识库根目录
+     * @throws IllegalArgumentException 用户名含路径分隔符或控制字符
      */
     public static Path knowledgeRoot(Path workspace, String username) {
         Path base = workspace.toAbsolutePath().normalize();
         if (username == null || username.isBlank()) {
             return base;
         }
-        Path named = base.resolve(username.strip()).normalize();
+        String cleaned = username.strip();
+        if (containsPathSeparator(cleaned)) {
+            throw new IllegalArgumentException(
+                    "username 不可包含路径分隔符，会导致知识根多层嵌套：'" + cleaned + "'");
+        }
+        Path named = base.resolve(cleaned).normalize();
         // 安全检查：确保不逃逸出工作空间
         if (!named.startsWith(base) || named.equals(base)) {
             return base;
         }
         return named;
+    }
+
+    /**
+     * 判断字符串是否包含任何路径分隔符或控制字符。
+     *
+     * <p>匹配 {@code /}、{@code \}、{@code :}（Windows 盘符冒号）以及 ASCII 控制字符。
+     */
+    private static boolean containsPathSeparator(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '/' || c == '\\' || c == ':' || c < 0x20) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

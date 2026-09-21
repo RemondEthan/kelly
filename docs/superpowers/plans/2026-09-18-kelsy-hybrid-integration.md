@@ -355,6 +355,7 @@ Expected: PASS.
 ```bash
 git add src/main/java/com/mordor/kelly/ui/chat/ChatController.java \
         src/main/java/com/mordor/kelly/kelsy/ui/knowledge/KnowledgePane.java \
+        src/main/java/com/mordor/kelly/kelsy/ui/knowledge/RetrievalStatusViewModel.java \
         src/main/resources/com/mordor/kelly/ui/chat/chat.css \
         src/test/java/com/mordor/kelly/kelsy/ui/knowledge/KnowledgePaneTest.java \
         src/test/java/com/mordor/kelly/ui/chat/ChatControllerKelsyTest.java

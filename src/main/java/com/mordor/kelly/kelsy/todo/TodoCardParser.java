@@ -98,16 +98,26 @@ public final class TodoCardParser {
     /**
      * 解析状态字符串为枚举值。
      *
-     * @param raw 状态字符串（"open" 或 "closed"）
+     * <p>接受：
+     * <ul>
+     *   <li>OPEN 侧：{@code open} / {@code OPEN} / {@code 待处理} / {@code 进行中}</li>
+     *   <li>CLOSED 侧：{@code closed} / {@code CLOSED} / {@code done} / {@code finish} / {@code finished}
+     *       / {@code 已完成} / {@code 完成} / {@code 关闭} / {@code 关了} / {@code 做完} / {@code 划掉} / {@code 搞定}</li>
+     * </ul>
+     * 大小写不敏感；值会先 {@code strip()}。其余值返回 {@code null}（让上层判定为不可解析）。
+     *
+     * @param raw 状态字符串
      * @return 对应的 TodoStatus，无法解析时返回 null
      */
     private static TodoStatus parseStatus(String raw) {
         if (raw == null) {
             return null;
         }
-        return switch (raw.strip().toLowerCase(Locale.ROOT)) {
-            case "open" -> TodoStatus.OPEN;
-            case "closed" -> TodoStatus.CLOSED;
+        String v = raw.strip().toLowerCase(Locale.ROOT);
+        return switch (v) {
+            case "open", "待处理", "进行中" -> TodoStatus.OPEN;
+            case "closed", "done", "finish", "finished",
+                 "已完成", "完成", "关闭", "关了", "做完", "划掉", "搞定" -> TodoStatus.CLOSED;
             default -> null;
         };
     }
