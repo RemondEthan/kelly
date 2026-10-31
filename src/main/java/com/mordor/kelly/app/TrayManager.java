@@ -18,9 +18,11 @@ import java.io.InputStream;
  *
  * <p>工作原理：
  * <ul>
- *   <li>基于 AWT 的 {@link SystemTray} 和 {@link TrayIcon} 实现跨平台系统托盘</li>
+ *   <li>双后端：Linux 优先走 {@link SniTray}（StatusNotifierItem 协议，
+ *       GNOME/KDE 的 AppIndicator 面板只认 SNI，AWT XEmbed 图标无法嵌入）；
+ *       SNI 不可用或 Windows/macOS 走 AWT {@link SystemTray}/{@link TrayIcon}</li>
  *   <li>{@link #install(Stage)} 是工厂方法，立即返回占位对象，真正的托盘注册
- *       在 AWT 线程中异步完成（通过 {@link AwtSupport#run}）</li>
+ *       异步完成（SNI 在调用线程，AWT 通过 {@link AwtSupport#run}）</li>
  *   <li>如果系统不支持托盘或加载失败，{@link #tray()} / {@link #icon()} 返回 null，
  *       上层调用者（如 QuitManager）据此跳过清理</li>
  * </ul>
@@ -41,25 +43,31 @@ public final class TrayManager {
     private volatile SystemTray tray;
     /** 托盘图标实例 */
     private volatile TrayIcon icon;
-    /** 正常状态的托盘图标图像 */
-    private volatile Image normalImage;
-    /** 提醒状态（有未读消息）的托盘图标图像 */
-    private volatile Image alertImage;
     /** 托盘右键菜单"退出"按钮的回调 */
     private volatile Runnable onQuit = () -> {};
+
+    /** Linux SNI/AppIndicator 后端；AWT 后端时为 null */
+    private volatile SniTray sni;
 
     /**
      * 安装系统托盘。
      *
-     * <p>此方法立即返回，实际的 SystemTray.add 操作在 AWT 线程异步完成。
-     * 调用方可安全地在 JavaFX 线程中调用此方法而不会阻塞。
+     * <p>后端选择：Linux 上优先走 StatusNotifierItem（GNOME/KDE 的
+     * AppIndicator 扩展只认 SNI，AWT XEmbed 图标在其面板上无法显示）；
+     * 无会话总线或无 watcher 时回退 AWT。Windows/macOS 走 AWT。
+     *
+     * <p>此方法立即返回，实际的托盘注册异步完成（SNI 在调用线程，
+     * AWT 在 AWT 线程）。调用方可安全地在 JavaFX 线程中调用而不会阻塞 UI。
      *
      * @param stage 主窗口 Stage，双击托盘图标时恢复窗口
      * @return 托盘管理器实例，即使安装失败也会返回（tray/icon 为 null）
      */
     public static TrayManager install(Stage stage) {
         TrayManager tm = new TrayManager();
-        AwtSupport.run(() -> tm.attach(stage));
+        tm.sni = SniTray.install(stage, () -> tm.onQuit);
+        if (tm.sni == null) {
+            AwtSupport.run(() -> tm.attach(stage));
+        }
         return tm;
     }
 
@@ -101,8 +109,6 @@ public final class TrayManager {
             systemTray.add(trayIcon);
             // 设置右键上下文菜单
             trayIcon.setPopupMenu(buildMenu(stage));
-            this.normalImage = image;
-            this.alertImage = alert != null ? alert : image;
             this.icon = trayIcon;
             this.tray = systemTray;
         } catch (AWTException e) {
@@ -134,29 +140,21 @@ public final class TrayManager {
     }
 
     /**
-     * 切换托盘图标为提醒态或正常态。
-     *
-     * <p>在 AWT 线程中执行图标切换，保证线程安全。
-     *
-     * @param alert true 显示提醒图标，false 恢复正常图标
-     */
-    void setAlert(boolean alert) {
-        AwtSupport.run(() -> {
-            if (icon == null || normalImage == null) {
-                return;
-            }
-            icon.setImage(alert && alertImage != null ? alertImage : normalImage);
-        });
-    }
-
-    /**
      * 设置托盘图标图像（用于闪烁动画，交替切换正常/提醒图标）。
      *
-     * <p>自动将图像缩放至系统托盘要求的尺寸。
+     * <p>SNI 后端按 Image 身份缓存编码像素并推送 PropertiesChanged；
+     * AWT 后端自动将图像缩放至系统托盘要求的尺寸。
      *
      * @param image 新的图标图像，null 时忽略
      */
     void setIconImage(java.awt.Image image) {
+        SniTray sniBackend = sni;
+        if (sniBackend != null) {
+            if (image != null) {
+                sniBackend.setIconImage(image);
+            }
+            return;
+        }
         AwtSupport.run(() -> {
             if (icon != null && image != null) {
                 Dimension size = tray != null ? tray.getTrayIconSize() : new Dimension(16, 16);

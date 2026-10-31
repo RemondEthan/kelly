@@ -77,6 +77,10 @@ module com.mordor.kelly {
     requires com.sun.jna;           // JNA 核心：Java 原生接口（不写 C 代码调用系统 API）
     requires com.sun.jna.platform;  // JNA 平台扩展：User32.dll 封装（Windows 任务栏闪烁）
 
+    // ─── Linux 托盘 D-Bus ─────────────────────────────────
+    requires org.freedesktop.dbus;              // dbus-java 核心：SNI 托盘协议（StatusNotifierItem）
+    requires org.freedesktop.dbus.transport.jre; // dbus-java 本机 UnixSocket 传输
+
     // ─── 导出包（供其他模块或反射访问）────────────────────
     exports com.mordor.kelly.app;       // 应用入口、托盘、快捷键、退出管理
     exports com.mordor.kelly.ui.login;  // 登录界面
