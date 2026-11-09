@@ -60,7 +60,25 @@ public final class MemoryCompactor {
         }
         kept = dedupePeopleProjects(kept);
         trimToLimit(kept);
-        return new Result(joinMemory(kept), collapseInbox(inbox, now), true);
+        if(byteLength(joinMemory(kept))>LIMIT_BYTES){
+            List<String> overflow=new ArrayList<>();
+            while(byteLength(joinMemory(kept))>LIMIT_BYTES-512){
+                int largest=-1;
+                for(int i=0;i<kept.size();i++)if(!isHeader(kept.get(i))&&(largest<0||byteLength(kept.get(i))>byteLength(kept.get(largest))))largest=i;
+                if(largest<0)break;
+                overflow.add(kept.remove(largest));
+            }
+            if(!overflow.isEmpty()){
+                String content=String.join("\n",overflow);
+                InboxCard card=toInboxCard(content,now);inbox.add(card);
+                String label=overflow.getFirst();if(label.startsWith("- "))label=label.substring(2);int end=label.offsetByCodePoints(0,Math.min(60,label.codePointCount(0,label.length())));
+                kept.add("- 归档偏好："+label.substring(0,end)+" → "+card.relativePath());
+            }
+        }
+        List<InboxCard> archives=collapseInbox(inbox,now);
+        String memory=joinMemory(kept);
+        if(inbox.size()>MAX_INBOX_CARDS)for(InboxCard card:inbox)memory=memory.replace(card.relativePath(),archives.getFirst().relativePath());
+        return new Result(memory,archives,true);
     }
 
     public static void apply(Path workspace, Result result) throws IOException {
@@ -77,7 +95,17 @@ public final class MemoryCompactor {
                 continue;
             }
             Files.createDirectories(dest.getParent());
-            new MarkdownDocumentStore(root).create(card.relativePath(), "收件箱", "inbox", List.of(), List.of(), null, card.markdown() == null ? "" : card.markdown());
+            var documents=new MarkdownDocumentStore(root);
+            String body=card.markdown()==null?"":card.markdown();
+            try{documents.create(card.relativePath(), "收件箱", "inbox", List.of(), List.of(), null,body);}
+            catch(com.mordor.kelly.kelsy.storage.StorageException e){
+                if(e.code()!=com.mordor.kelly.kelsy.storage.StorageException.Code.CONFLICT)throw e;
+                // A retry after partial completion reuses the same content-addressed archive.
+                var existing=documents.read(card.relativePath(),null);
+                String[] lines=existing.markdown().replace("\r\n","\n").split("\n",-1);
+                String saved=String.join("\n",java.util.Arrays.copyOfRange(lines,existing.bodyLine()-1,lines.length));
+                if(!saved.equals(body))throw new com.mordor.kelly.kelsy.storage.StorageException(com.mordor.kelly.kelsy.storage.StorageException.Code.CONFLICT,"Archive path contains different content");
+            }
         }
         Path memory = root.resolve("MEMORY.md");
         Path bak = root.resolve("MEMORY.md.bak");
@@ -188,7 +216,7 @@ public final class MemoryCompactor {
 
     private static InboxCard toInboxCard(String line, LocalDate today) {
         String slug = slug(line);
-        String path = "knowledge/inbox/" + today + "-" + slug + ".md";
+        String path = "knowledge/inbox/" + today + "-" + slug + "-" + MarkdownDocumentStore.hash(line) + ".md";
         String markdown = "# 收件箱\n\n" + line + "\n";
         return new InboxCard(path, markdown);
     }
@@ -219,7 +247,7 @@ public final class MemoryCompactor {
                 }
             }
         }
-        return List.of(new InboxCard("knowledge/inbox/" + today + "-batch.md", markdown.toString()));
+        return List.of(new InboxCard("knowledge/inbox/" + today + "-batch-" + MarkdownDocumentStore.hash(markdown.toString()) + ".md", markdown.toString()));
     }
 
     private static boolean isSafe(char c) {

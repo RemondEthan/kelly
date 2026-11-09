@@ -191,7 +191,7 @@ public class ChatPane extends StackPane {
         KnowledgeStore store = controller.knowledgeStore();
         // Kelsy 未启用或无知识库时，只显示聊天区域
         if (!controller.kelsyEnabled() || store == null) {
-            controller.setOnCitationSources(null);
+            controller.setOnCitationSources(null);controller.setOnCitationEvidence(null);
             controller.setOnOpenKnowledge(null);
             controller.setOnRefreshKnowledge(null);
             knowledge = null;
@@ -203,6 +203,7 @@ public class ChatPane extends StackPane {
         if (knowledge == null) {
             knowledge = new KnowledgePane(store, controller.memoryWarnProperty());
             controller.setOnCitationSources(knowledge::setSources);
+            controller.setOnCitationEvidence(knowledge::setEvidence);
             controller.setOnOpenKnowledge(knowledge::open);
             controller.setOnRefreshKnowledge(knowledge::refresh);
             // 启动待办提醒服务

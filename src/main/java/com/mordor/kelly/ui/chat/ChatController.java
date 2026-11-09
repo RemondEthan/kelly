@@ -134,6 +134,8 @@ public class ChatController {
     private final CitationTurn citations = new CitationTurn();
     /** 引用源变更回调 */
     private Consumer<List<String>> onCitationSources = paths -> {};
+    private Consumer<List<CitationTurn.Evidence>> onCitationEvidence=items->{};
+    public void setOnCitationEvidence(Consumer<List<CitationTurn.Evidence>> listener){onCitationEvidence=listener==null?items->{}:listener;}
     /** 打开知识库文件回调 */
     private Consumer<String> onOpenKnowledge = path -> {};
     /** 刷新知识库回调 */
@@ -168,9 +170,9 @@ public class ChatController {
     /** 延迟处理的待办事项路径（助手回复完成后再显示引用） */
     private List<String> deferredTodoPaths;
     /** 待办事项提醒服务 */
-    private TodoReminderService reminders;
+    private volatile TodoReminderService reminders;
     private volatile boolean controllerClosed;
-    private long reminderGeneration;
+    private volatile long reminderGeneration;
     private final java.util.Set<UUID> renderedReminderBatches = new java.util.HashSet<>();
     /** 提醒定时器线程池 */
     private ScheduledExecutorService reminderClock;
@@ -533,6 +535,7 @@ public class ChatController {
 
     private void startAsk(String outgoing) {
         citations.beginAsk();
+        onCitationEvidence.accept(List.of());onCitationSources.accept(List.of());knowledgeVisible.set(false);onOpenKnowledge.accept(null);
         kelsyBusy.set(true);
         AssistantService assistant = runtime.ensureAssistant();
         if (assistant == null) {
@@ -551,7 +554,6 @@ public class ChatController {
     }
 
     private void sendGroundedAsk(String outgoing, AssistantService assistant, AskGrounding grounding) {
-        citations.addPaths(grounding.citationPaths());
         AssistantMessage reply = AssistantMessage.streaming(Sender.ASSISTANT);
         liveAssistant.set(reply);
         assistant.chat(grounding.messageForModel(), new AssistantService.ReplyHandler() {
@@ -576,20 +578,22 @@ public class ChatController {
             }
 
             @Override
-            public void onToolCall(String name, String argsPreview) {
+            public void onToolCall(String name, String argsPreview) {onToolCall(name,name,argsPreview);}
+            @Override public void onToolCall(String id,String name,String argsPreview) {
                 onFx(() -> {
-                    citations.beginTool(name);
+                    citations.beginTool(id,name);
                     if (argsPreview != null && !argsPreview.isBlank()) {
-                        citations.appendToolArgs(argsPreview);
+                        citations.appendToolArgs(id,argsPreview);
                     }
                     reply.addTool(0, name, argsPreview);
                 });
             }
 
             @Override
-            public void onToolArgs(String name, String delta) {
+            public void onToolArgs(String name, String delta) {onToolArgs(name,name,delta);}
+            @Override public void onToolArgs(String id,String name,String delta) {
                 onFx(() -> {
-                    citations.appendToolArgs(delta);
+                    citations.appendToolArgs(id,delta);
                     for (MessageBlock b : reply.blocks()) {
                         if (b.kind() == MessageBlock.Kind.TOOL && name.equals(b.toolName())) {
                             b.appendArgs(delta);
@@ -607,9 +611,10 @@ public class ChatController {
             }
 
             @Override
-            public void onToolResult(String name, String summary) {
+            public void onToolResult(String name, String summary) {onToolResult(name,name,summary);}
+            @Override public void onToolResult(String id,String name,String summary) {
                 onFx(() -> {
-                    citations.appendToolResult(summary);
+                    citations.appendToolResult(id,summary);
                     KnowledgePathExtractor.first(citations.toolText()).ifPresent(path -> {
                         for (MessageBlock b : reply.blocks()) {
                             if (b.kind() == MessageBlock.Kind.TOOL && name.equals(b.toolName())) {
@@ -622,6 +627,7 @@ public class ChatController {
                 });
             }
 
+            @Override public void onToolResultEnd(String id,String name,boolean success){onFx(()->citations.finishTool(id,success));}
             @Override
             public void onComplete() {
                 onFx(() -> {
@@ -629,13 +635,13 @@ public class ChatController {
                     liveAssistant.set(null);
                     persistAssistant(reply.content());
                     kelsyBusy.set(false);
-                    citations.addRetrievalText(reply.content());
-                    addLocalEvidence(outgoing, grounding);
+                    citations.finishTools();
                     boolean retrieved = citations.commitIfRetrieved();
                     Diagnostics.warn("cite", "retrieved=%s shown=%s outgoing=%s",
                             retrieved, citations.shown(), outgoing);
                     if (retrieved) {
                         knowledgeVisible.set(true);
+                        onCitationEvidence.accept(citations.evidence());
                         onCitationSources.accept(citations.shown());
                         openKnowledge(citations.evidencePath());
                     }
@@ -722,7 +728,10 @@ public class ChatController {
                 if (controllerClosed || reminders != service || reminderGeneration != generation) return;
                 applyReminder(batch, now.toLocalDate());
                 Runnable ack = () -> {
-                    try { service.commit(batch, now.toLocalDate()); }
+                    try {
+                        service.commit(batch, now.toLocalDate());
+                        if(batch.uid()!=null&&!controllerClosed&&reminders==service&&reminderGeneration==generation)java.util.concurrent.CompletableFuture.runAsync(()->fireRemindersAt(now));
+                    }
                     catch (RuntimeException e) { Diagnostics.warn("todo", "Reminder acknowledgement failed: %s", e.getMessage()); }
                 };
                 if(Platform.isFxApplicationThread()) java.util.concurrent.CompletableFuture.runAsync(ack); else ack.run();
@@ -750,21 +759,8 @@ public class ChatController {
         reminders = null;
     }
 
-    private void addLocalEvidence(String outgoing, AskGrounding grounding) {
-        KnowledgeStore store = knowledgeStore();
-        if (store == null || outgoing == null || outgoing.isBlank() || grounding == null) {
-            return;
-        }
-        List<String> turnPaths = grounding.citationPaths();
-        citations.addPaths(turnPaths);
-        if (!LocalEvidence.mentionsTodos(outgoing)) {
-            return;
-        }
-        // Task evidence comes from todo_get/list tool results, never an unrelated list snapshot.
-    }
-
     private void showTodoSources(List<String> paths) {
-        citations.replaceShown(paths);
+        citations.replaceShown(paths);onCitationEvidence.accept(List.of());
         knowledgeVisible.set(true);
         onCitationSources.accept(citations.shown());
         openKnowledge(citations.firstShown());
@@ -839,7 +835,7 @@ public class ChatController {
     }
 
     private void showFind(List<KnowledgeStore.Hit> hits,String status) {
-        citations.beginAsk();
+        citations.beginAsk();onCitationEvidence.accept(List.of());
         citations.addPaths(hits.stream().map(KnowledgeStore.Hit::relativePath).toList());
         if (citations.commitIfRetrieved()) {
             knowledgeVisible.set(true);

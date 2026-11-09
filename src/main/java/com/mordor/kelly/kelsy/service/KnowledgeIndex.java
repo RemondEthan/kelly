@@ -14,15 +14,21 @@ public final class KnowledgeIndex implements AutoCloseable {
     private final Path workspace;
     private final Connection db;
     private final MarkdownDocumentStore files;
+    private java.util.function.Function<String,String> readDocument;
     private final ObjectMapper json=new ObjectMapper();
-    private final Map<String,String> errors=new LinkedHashMap<>();
-    private final Map<String,String> invalidHashes=new LinkedHashMap<>();
+    private final Map<String,String> errors=new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String,String> invalidHashes=new java.util.concurrent.ConcurrentHashMap<>();
     private KnowledgeSyncService sync;
+    private final Object reconcileLock=new Object();
+    private final Object[] fileLocks=new Object[256];
     private volatile boolean building=true,closed,truncated;
     public boolean truncated(){return truncated;}
     private volatile Instant reconciled;
+    private volatile String watcherError;
+    void watcherFailed(String message){watcherError=message;}
+    void watcherHealthy(){watcherError=null;}
     public record Status(String state,Instant lastReconciledAt,Map<String,String> errors) {}
-    private KnowledgeIndex(Path root,Connection db){this.workspace=root;this.db=db;this.files=new MarkdownDocumentStore(root);}
+    private KnowledgeIndex(Path root,Connection db){this.workspace=root;this.db=db;this.files=new MarkdownDocumentStore(root);this.readDocument=files::readText;Arrays.setAll(fileLocks,i->new Object());}
     public static KnowledgeIndex open(Path workspace){
         Path root=workspace.toAbsolutePath().normalize();
         try { return new KnowledgeIndex(root,DatabaseBootstrap.open(root,true)); }
@@ -39,11 +45,18 @@ public final class KnowledgeIndex implements AutoCloseable {
             } catch(java.io.IOException e) { throw new StorageException(INDEX_UNAVAILABLE,"Cannot rebuild derived index",e); }
         }
     }
+    static KnowledgeIndex open(Path root,java.util.function.Function<String,String> reader){
+        KnowledgeIndex index=open(root);index.readDocument=reader;return index;
+    }
     public synchronized void start(){if(sync==null){sync=new KnowledgeSyncService(workspace,this);sync.start();}}
-    public synchronized Status status(){return new Status(building?"BUILDING":errors.isEmpty()?"READY":"STALE",reconciled,Map.copyOf(errors));}
+    public synchronized Status status(){
+        Map<String,String> all=new LinkedHashMap<>(errors);if(watcherError!=null)all.put("<watch>",watcherError);
+        return new Status(building?"BUILDING":all.isEmpty()?"READY":"STALE",reconciled,Map.copyOf(all));
+    }
     /** Explicit background/maintenance hook; retained for callers, never called by search. */
     public void reconcileIfStale(){ if(reconciled==null||Duration.between(reconciled,Instant.now()).toMinutes()>=5)reconcile(); }
-    public synchronized void reconcile(){
+    public void reconcile(){
+        synchronized(reconcileLock){
         check();Set<String> disk=new LinkedHashSet<>();
         try{
             for(String dir:List.of("knowledge","memory")){
@@ -53,23 +66,31 @@ public final class KnowledgeIndex implements AutoCloseable {
                 }
             }
             if(Files.isRegularFile(workspace.resolve("MEMORY.md")))disk.add("MEMORY.md");
-            for(String path:disk){try{upsert(path);}catch(RuntimeException e){errors.put(path,e.getMessage());}}
-            List<String> gone=new ArrayList<>();try(var s=db.createStatement();var r=s.executeQuery("SELECT path FROM documents")){while(r.next())if(!disk.contains(r.getString(1)))gone.add(r.getString(1));}
-            for(String path:gone)delete(path);
+            for(String path:disk){try{upsert(path);}catch(RuntimeException e){errors.put(path,Objects.toString(e.getMessage(),"Index failed"));}}
+            List<String> gone=new ArrayList<>();
+            synchronized(this){check();try(var s=db.createStatement();var r=s.executeQuery("SELECT path FROM documents")){while(r.next())if(!disk.contains(r.getString(1)))gone.add(r.getString(1));}}
+            for(String path:gone)if(!Files.exists(files.safe(path)))delete(path);
             errors.keySet().removeIf(p->!disk.contains(p));
             invalidHashes.keySet().removeIf(p->!disk.contains(p));
             reconciled=Instant.now();building=false;
         }catch(Exception e){building=false;errors.put("<scan>",Objects.toString(e.getMessage(),"Scan failed"));throw failure(e);}
     }
+    }
     static boolean indexable(String p){return p.equals("MEMORY.md") || (p.endsWith(".md")&&(p.startsWith("memory/")||(p.startsWith("knowledge/")&&!p.startsWith("knowledge/todos/")&&!p.equals("knowledge/KNOWLEDGE.md"))));}
     private void check(){if(closed)throw new StorageException(CLOSED,"Article index closed");}
     private StorageException failure(Exception e){return e instanceof StorageException se?se:new StorageException(INDEX_UNAVAILABLE,"Article index unavailable",e);}
-    public synchronized void upsert(String path){
+    public void upsert(String path){
         check();if(!indexable(path))return;
+        try {
+            Path resolved=files.safe(path);
+            if(Files.exists(resolved))path=workspace.toRealPath().relativize(resolved.toRealPath()).toString().replace('\\','/');
+        }catch(java.io.IOException e){throw failure(e);}
+        synchronized(fileLocks[Math.floorMod(workspace.resolve(path).normalize().hashCode(),fileLocks.length)]){
         try{
             Path p=files.safe(path);
             if(!Files.isRegularFile(p)){delete(path);return;}
-            String raw=files.readText(path),hash=MarkdownDocumentStore.hash(raw);
+            String raw=readDocument.apply(path),hash=MarkdownDocumentStore.hash(raw);
+            synchronized(this){check();
             if(hash.equals(invalidHashes.get(path)))return;
             try(var q=db.prepareStatement("SELECT content_hash,state FROM documents WHERE path=?")){q.setString(1,path);try(var r=q.executeQuery()){if(r.next()&&r.getString(1).equals(hash)&&r.getString(2).equals("ready")&&!errors.containsKey(path)){return;}}}
             MarkdownDocumentStore.Article article;
@@ -86,15 +107,19 @@ public final class KnowledgeIndex implements AutoCloseable {
             UUID uid=article==null?UUID.nameUUIDFromBytes(("kelly:system:"+path).getBytes(java.nio.charset.StandardCharsets.UTF_8)):article.uid();
             String title=article==null?path:article.title(),kind=article==null?(path.equals("MEMORY.md")?"memory":"daily"):article.kind();
             String date=article==null?(path.startsWith("memory/")?path.substring(7,Math.min(path.length(),17)):null):article.date()==null?null:article.date().toString();
+            String renamedFrom=null;
             try(var q=db.prepareStatement("SELECT path FROM documents WHERE document_uid=? AND path<>?")){
                 q.setString(1,uid.toString());q.setString(2,path);try(var r=q.executeQuery()){if(r.next()){
                     String other=r.getString(1);
-                    if(Files.exists(files.safe(other))) {errors.put(other,"Duplicate document ID");throw new StorageException(IDENTITY_CONFLICT,"Duplicate document ID: "+other);}
-                    delete(other);
+                    if(Files.exists(files.safe(other))&&!Files.isSameFile(files.safe(other),p)) {errors.put(other,"Duplicate document ID");throw new StorageException(IDENTITY_CONFLICT,"Duplicate document ID: "+other);}
+                    renamedFrom=other;
                 }}
             }
             try(var s=db.createStatement()){s.execute("BEGIN IMMEDIATE");}
             try{
+                if(renamedFrom!=null)try(var q=db.prepareStatement("UPDATE documents SET path=? WHERE document_uid=?")){
+                    q.setString(1,path);q.setString(2,uid.toString());q.executeUpdate();
+                }
                 try(var q=db.prepareStatement("INSERT INTO documents(document_uid,path,kind,title,aliases_json,event_date,mtime_ms,size_bytes,content_hash,parser_version,state) VALUES(?,?,?,?,?,?,?,?,?,1,'ready') ON CONFLICT(path) DO UPDATE SET document_uid=excluded.document_uid,kind=excluded.kind,title=excluded.title,aliases_json=excluded.aliases_json,event_date=excluded.event_date,mtime_ms=excluded.mtime_ms,size_bytes=excluded.size_bytes,content_hash=excluded.content_hash,parser_version=1,state='ready'")){
                     q.setString(1,uid.toString());q.setString(2,path);q.setString(3,kind);q.setString(4,title);q.setString(5,json.writeValueAsString(article==null?List.of():article.aliases()));q.setString(6,date);q.setLong(7,Files.getLastModifiedTime(p).toMillis());q.setLong(8,Files.size(p));q.setString(9,hash);q.executeUpdate();
                 }
@@ -110,9 +135,11 @@ public final class KnowledgeIndex implements AutoCloseable {
                     }
                     try(var q=db.prepareStatement("INSERT INTO search_content VALUES(?,?,?,?)")){q.setLong(1,chunkId);q.setString(2,SearchTerms.index(title+" "+chunk.heading));q.setString(3,SearchTerms.index(aliases));q.setString(4,SearchTerms.index(chunk.raw));q.executeUpdate();}
                 }
-                try(var s=db.createStatement()){s.execute("COMMIT");}errors.remove(path);
+                try(var s=db.createStatement()){s.execute("COMMIT");}errors.remove(path);if(renamedFrom!=null)errors.remove(renamedFrom);
             }catch(Exception e){try(var s=db.createStatement()){s.execute("ROLLBACK");}throw e;}
+            }
         }catch(Exception e){errors.put(path,Objects.toString(e.getMessage(),"Index failed"));throw failure(e);}
+        }
     }
     record Chunk(String heading,int start,int end,String raw) {}
     static List<Chunk> chunks(String raw,int bodyLine){
@@ -142,9 +169,9 @@ public final class KnowledgeIndex implements AutoCloseable {
         }
         return bounded;
     }
-    public synchronized void rebuild(){
-        check();try(var s=db.createStatement()){s.executeUpdate("DELETE FROM documents");errors.clear();invalidHashes.clear();building=true;}
-        catch(SQLException e){throw failure(e);}reconcile();
+    public void rebuild(){
+        synchronized(this){check();try(var s=db.createStatement()){s.executeUpdate("DELETE FROM documents");errors.clear();invalidHashes.clear();building=true;}
+        catch(SQLException e){throw failure(e);}}reconcile();
     }
     public synchronized void delete(String path){check();try(var q=db.prepareStatement("DELETE FROM documents WHERE path=?")){q.setString(1,path);q.executeUpdate();errors.remove(path);invalidHashes.remove(path);}catch(SQLException e){throw failure(e);}}
     public synchronized String pathFor(UUID uid){check();try(var q=db.prepareStatement("SELECT path FROM documents WHERE document_uid=?")){q.setString(1,uid.toString());try(var r=q.executeQuery()){if(!r.next())throw new StorageException(NOT_FOUND,"Article ID not indexed");return r.getString(1);}}catch(SQLException e){throw failure(e);}}
@@ -174,7 +201,7 @@ public final class KnowledgeIndex implements AutoCloseable {
                 if(++scanned>5000){truncated=true;break;}
                 String path=r.getString("path");if(errors.containsKey(path)||!seen.add(path))continue;
                 String current;
-                try{current=files.readText(path);}catch(StorageException e){errors.put(path,e.getMessage());continue;}
+                try{current=files.readText(path);}catch(StorageException e){errors.put(path,Objects.toString(e.getMessage(),"Index failed"));continue;}
                 if(!MarkdownDocumentStore.hash(current).equals(r.getString("content_hash"))){errors.put(path,"File changed; reindex pending");if(sync!=null)sync.changed(path);continue;}
                 String snippet=r.getString("raw_text").strip();int end=snippet.offsetByCodePoints(0,Math.min(240,snippet.codePointCount(0,snippet.length())));snippet=snippet.substring(0,end);
                 hits.add(new KnowledgeStore.Hit(path,r.getInt("start_line"),snippet,1.0,r.getString("content_hash"),r.getString("document_uid"),r.getDouble("rank")));

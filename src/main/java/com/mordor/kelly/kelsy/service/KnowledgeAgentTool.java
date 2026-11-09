@@ -34,7 +34,10 @@ public final class KnowledgeAgentTool implements AgentTool {
     private ToolResultBlock execute(Map<String,Object> in){try{
         MarkdownDocumentStore files=new MarkdownDocumentStore(store.workspace());
         String path=text(in,"path",null);String uid=text(in,"uid",null);
-        if(uid!=null){String fallback=path;try{path=store.index().pathFor(UUID.fromString(uid));}catch(StorageException e){if(fallback==null)throw e;}}
+        if(uid!=null){String fallback=path;
+            if(store.index()!=null)try{path=store.index().pathFor(UUID.fromString(uid));}catch(StorageException e){if(fallback==null)throw e;}
+            else if(fallback==null)throw new StorageException(StorageException.Code.INDEX_UNAVAILABLE,"Provide path while the index is unavailable");
+        }
         MarkdownDocumentStore.Article article;
         switch(op){
             case "get" -> {
@@ -58,7 +61,7 @@ public final class KnowledgeAgentTool implements AgentTool {
             case "update" -> article=files.update(path,text(in,"expectedHash",null),text(in,"markdown",null));
             default -> throw new IllegalArgumentException("Unknown operation");
         }
-        boolean indexed=true;if(!op.equals("get"))try{store.upsert(path);}catch(RuntimeException e){indexed=false;}
+        boolean indexed=store.index()!=null;if(!op.equals("get"))try{store.upsert(path);}catch(RuntimeException e){indexed=false;}
         Map<String,Object> data=new LinkedHashMap<>();data.put("uid",article.uid().toString());data.put("path",article.path());data.put("citation","article:"+article.uid());data.put("markdown",article.markdown());data.put("hash",article.hash());data.put("indexReady",indexed);return result(data);
     }catch(Exception e){String code=e instanceof StorageException se?se.code().name():"INVALID_ARGUMENT";try{return ToolResultBlock.text(JSON.writeValueAsString(Map.of("ok",false,"error",Map.of("code",code,"message",Objects.toString(e.getMessage(),code),"retryable",false))));}catch(Exception impossible){throw new IllegalStateException(impossible);}}}
     private static ToolResultBlock result(Object data)throws Exception{return ToolResultBlock.text(JSON.writeValueAsString(Map.of("ok",true,"data",data)));}

@@ -206,7 +206,7 @@ class ChatControllerKelsyTest {
     }
 
     @Test
-    void askWithoutToolsOpensCitedTodo() throws Exception {
+    void answerTextAloneDoesNotCreateVerifiedSources() throws Exception {
         List<List<String>> sources = new ArrayList<>();
         List<String> opened = new ArrayList<>();
         List<String> asked = new ArrayList<>();
@@ -220,10 +220,9 @@ class ChatControllerKelsyTest {
         assertTrue(c.send("@tars 我最近有什么待办项？").accepted());
         assertTrue(asked.getFirst().contains("我最近有什么待办项？"));
         drainFx();
-        assertEquals(List.of("knowledge/todos/2026-09-07-给晓慧发kelly代码.md"), sources.getLast());
-        drainFx();
-        assertEquals("knowledge/todos/2026-09-07-给晓慧发kelly代码.md", opened.getLast());
-        assertTrue(c.knowledgeVisibleProperty().get());
+        assertTrue(sources.getLast().isEmpty());
+        assertFalse(c.knowledgeVisibleProperty().get());
+        assertTrue(opened.stream().allMatch(java.util.Objects::isNull));
     }
 
     @Test
@@ -232,7 +231,7 @@ class ChatControllerKelsyTest {
         java.util.concurrent.atomic.AtomicReference<String> ref=new java.util.concurrent.atomic.AtomicReference<>();
         ChatController c=controller(new ArrayList<>(),new ArrayList<>(),true,true,false,(text,handler)->{
             handler.onToolCall("todo_list","{}");
-            handler.onToolResult("todo_list",ref.get());
+            handler.onToolResult("todo_list", "{\"ok\":true,\"data\":{\"items\":[{\"uid\":\""+ref.get().substring(5)+"\",\"version\":1}]}}");
             handler.onTextDelta("有一条任务。");handler.onComplete();
         });
         var task=c.knowledgeStore().todos().create(new com.mordor.kelly.kelsy.todo.TodoRepository.Input("发代码","",LocalDate.of(2026,9,7),0,List.of()));
@@ -262,13 +261,8 @@ class ChatControllerKelsyTest {
         assertTrue(c.send("@tars 我最近有什么会议？").accepted());
         assertTrue(asked.getFirst().contains("我最近有什么会议？"));
         drainFx();
-        assertEquals(List.of("knowledge/meetings/2026-09-04-客户XX-交付licence.md"), sources.getLast());
-        drainFx();
-        assertFalse(sources.getLast().contains("knowledge/meetings/unrelated.md"));
-        drainFx();
-        assertFalse(sources.getLast().contains("knowledge/KNOWLEDGE.md"));
-        drainFx();
-        assertEquals("knowledge/meetings/2026-09-04-客户XX-交付licence.md", opened.getLast());
+        assertTrue(sources.getLast().isEmpty(),"Candidates must be read before becoming verified sources");
+        assertFalse(c.knowledgeVisibleProperty().get());
     }
 
     @Test
@@ -290,9 +284,8 @@ class ChatControllerKelsyTest {
         assertTrue(c.send("@tars 张三是谁").accepted());
         assertTrue(asked.getFirst().contains("张三是谁"));
         drainFx();
-        assertEquals(List.of("knowledge/people/张三.md"), sources.getLast());
-        drainFx();
-        assertEquals("knowledge/people/张三.md", opened.getLast());
+        assertTrue(sources.getLast().isEmpty(),"Candidates must be read before becoming verified sources");
+        assertFalse(c.knowledgeVisibleProperty().get());
     }
 
     @Test

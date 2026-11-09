@@ -244,11 +244,10 @@ public final class LocalAssistantService implements AssistantService {
             case TextBlockEndEvent e -> handler.onTextEnd();
             case ThinkingBlockDeltaEvent e -> handler.onThinkingDelta(e.getDelta());
             case ThinkingBlockEndEvent e -> handler.onThinkingEnd();
-            case ToolCallStartEvent e -> handler.onToolCall(e.getToolCallName(), "");
-            case ToolCallDeltaEvent e -> handler.onToolArgs(e.getToolCallName(), e.getDelta());
-            case ToolResultTextDeltaEvent e -> handler.onToolResult(e.getToolCallName(), e.getDelta());
-            case ToolResultEndEvent ignored -> {
-            }
+            case ToolCallStartEvent e -> handler.onToolCall(e.getToolCallId(),e.getToolCallName(), "");
+            case ToolCallDeltaEvent e -> handler.onToolArgs(e.getToolCallId(),e.getToolCallName(), e.getDelta());
+            case ToolResultTextDeltaEvent e -> handler.onToolResult(e.getToolCallId(),e.getToolCallName(), e.getDelta());
+            case ToolResultEndEvent e -> handler.onToolResultEnd(e.getToolCallId(),e.getToolCallName(),e.getState()==io.agentscope.core.message.ToolResultState.SUCCESS);
             default -> {
             }
         }

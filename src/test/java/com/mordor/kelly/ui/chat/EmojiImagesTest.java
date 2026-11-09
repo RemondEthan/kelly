@@ -10,6 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EmojiImagesTest {
+    @org.junit.jupiter.api.BeforeAll
+    static void startToolkit() throws Exception { FxTestSupport.startToolkit(); }
+
 
     @Test
     void flowWithMap_textOnly_returnsSingleTextOffsetZero() {

@@ -9,6 +9,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SelectableTextFlowTest {
+    @org.junit.jupiter.api.BeforeAll
+    static void startToolkit() throws Exception { FxTestSupport.startToolkit(); }
+
 
     @Test
     void forText_returnsFocusableTextFlow() {

@@ -63,12 +63,12 @@ class MemoryCompactorTest {
     }
 
     @Test
-    void leavesEvergreenWhenStillOverLimit() {
+    void archivesEvergreenOverflowWithoutExceedingBudget() {
         String fat = "# Memory\n\n- 喜欢深色主题 " + "x".repeat(5000) + "\n";
         var r = MemoryCompactor.compact(fat, LocalDate.of(2026, 9, 15));
         assertTrue(r.memoryMarkdown().contains("深色主题"));
         assertTrue(r.memoryMarkdown().getBytes(StandardCharsets.UTF_8).length
-                > MemoryCompactor.LIMIT_BYTES);
+                <= MemoryCompactor.LIMIT_BYTES);
     }
 
     @Test
@@ -84,7 +84,7 @@ class MemoryCompactorTest {
         }
         var r = MemoryCompactor.compact(fat.toString(), LocalDate.of(2026, 9, 15));
         assertEquals(1, r.inboxCards().size());
-        assertEquals("knowledge/inbox/2026-09-15-batch.md", r.inboxCards().get(0).relativePath());
+        assertTrue(r.inboxCards().get(0).relativePath().startsWith("knowledge/inbox/2026-09-15-batch-"));
         String markdown = r.inboxCards().get(0).markdown();
         assertTrue(markdown.contains("孤儿流水1"));
         assertTrue(markdown.contains("孤儿流水12"));

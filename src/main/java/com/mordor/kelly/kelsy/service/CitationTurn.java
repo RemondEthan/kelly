@@ -58,6 +58,17 @@ public final class CitationTurn {
 
     /** 当前工具的结果文本 */
     private String currentTool = "";
+    public record Evidence(String reference,String path,String hash,Long version) {}
+    private final java.util.Map<String,Transcript> transcripts=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,Evidence> evidence=new java.util.LinkedHashMap<>();
+    private String currentId="";
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON=new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final class Transcript {
+        final String name;final StringBuilder result=new StringBuilder();boolean failed;
+        Transcript(String name){this.name=name;}
+    }
+    public List<Evidence> evidence(){return List.copyOf(evidence.values());}
+
 
     /**
      * 判断工具是否为检索类工具。
@@ -77,7 +88,7 @@ public final class CitationTurn {
      * 开始新一轮对话：清空待处理路径和当前工具状态。
      */
     public void beginAsk() {
-        pending.clear();
+        pending.clear();shown.clear();evidence.clear();transcripts.clear();
         resetTool();
     }
 
@@ -86,7 +97,10 @@ public final class CitationTurn {
      *
      * @param name 工具名称
      */
-    public void beginTool(String name) {
+    public void beginTool(String name) {beginTool(name,name);}
+    public void beginTool(String id,String name) {
+        currentId=id;
+        transcripts.put(id,new Transcript(name));
         currentTool = name == null ? "" : name;
         toolArgs.setLength(0);
         toolResult.setLength(0);
@@ -102,8 +116,8 @@ public final class CitationTurn {
         if (delta != null && !delta.isEmpty()) {
             toolArgs.append(delta);
         }
-        extractCurrent();
     }
+    public void appendToolArgs(String id,String delta){if(id.equals(currentId))appendToolArgs(delta);}
 
     /**
      * 追加工具返回结果增量。
@@ -115,7 +129,44 @@ public final class CitationTurn {
         if (delta != null && !delta.isEmpty()) {
             toolResult.append(delta);
         }
-        extractCurrent();
+        Transcript transcript=transcripts.get(currentId);
+        if(transcript!=null&&delta!=null)transcript.result.append(delta);
+    }
+    public void appendToolResult(String id,String delta){
+        if(id.equals(currentId))appendToolResult(delta);
+        else {Transcript transcript=transcripts.get(id);if(transcript!=null&&delta!=null)transcript.result.append(delta);}
+    }
+    public void finishTool(String id,boolean success){
+        Transcript transcript=transcripts.get(id);if(transcript!=null)transcript.failed=!success;
+    }
+    /** Parse complete tool envelopes once, never arguments, directory listings or generated prose. */
+    public void finishTools(){
+        for(Transcript transcript:transcripts.values()){
+            if(transcript.failed||!Set.of("knowledge_get","todo_get","todo_list").contains(transcript.name))continue;
+            try{
+                com.fasterxml.jackson.databind.JsonNode envelope=JSON.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(transcript.result.toString());
+                if(!envelope.path("ok").asBoolean(false))continue;
+                var data=envelope.path("data");
+                if(transcript.name.equals("todo_list")){for(var task:data.path("items"))addTask(task);}
+                else if(transcript.name.equals("todo_get"))addTask(data);
+                else {
+                    String path=data.path("path").asText();String hash=data.path("hash").asText();
+                    if(!hash.matches("[0-9a-f]{64}")||!data.has("markdown")||!MarkdownDocumentStore.hash(data.path("markdown").asText()).equals(hash))continue;
+                    String reference;
+                    if(path.startsWith("knowledge/"))reference="article:"+java.util.UUID.fromString(data.path("uid").asText());
+                    else if(path.equals("MEMORY.md")||path.startsWith("memory/"))reference=path;
+                    else continue;
+                    evidence.put(reference,new Evidence(reference,path,hash,null));pending.add(reference);
+                }
+            }catch(Exception ignored){/* Incomplete, failed or malformed tool output is not evidence. */}
+        }
+    }
+    private void addTask(com.fasterxml.jackson.databind.JsonNode task){
+        try{
+            String ref="todo:"+java.util.UUID.fromString(task.path("uid").asText());long version=task.path("version").asLong();
+            if(version<1)return;
+            evidence.put(ref,new Evidence(ref,null,null,version));pending.add(ref);
+        }catch(IllegalArgumentException ignored){}
     }
 
     /**
@@ -141,13 +192,6 @@ public final class CitationTurn {
      * 从当前工具的参数和结果中提取知识库路径。
      * 仅对检索类工具执行提取。
      */
-    private void extractCurrent() {
-        if (!isRetrievalTool(currentTool)) {
-            return;
-        }
-        addRetrievalText(toolArgs + "\n" + toolResult);
-    }
-
     /** 重置当前工具状态 */
     private void resetTool() {
         currentTool = "";
@@ -161,7 +205,7 @@ public final class CitationTurn {
      * @param text 包含路径的文本
      */
     public void addRetrievalText(String text) {
-        pending.addAll(KnowledgePathExtractor.all(text));
+        for(String reference:KnowledgePathExtractor.all(text))if(evidence.containsKey(reference))pending.add(reference);
     }
 
     /**

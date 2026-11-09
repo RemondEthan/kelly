@@ -25,7 +25,13 @@ public final class TodoRepository implements AutoCloseable {
     }
     public record Page(List<Todo> items, String nextCursor) {}
     public TodoRepository(Path root) { this(root, Clock.systemDefaultZone()); }
-    public TodoRepository(Path root, Clock clock) { this.db=DatabaseBootstrap.open(root,false); this.clock=clock; this.root=root.toAbsolutePath().normalize(); }
+    public TodoRepository(Path root, Clock clock) { this.db=DatabaseBootstrap.open(root,false); this.clock=clock; this.root=root.toAbsolutePath().normalize();
+        try(var statement=db.createStatement()){
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_todos_status_sort ON todos(status,COALESCE(due_date,'9999-99-99'),id) WHERE deleted_at IS NULL");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_todos_reminder_sort ON todos(due_date,title COLLATE BINARY,uid) WHERE deleted_at IS NULL AND status='open'");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_todos_sort ON todos(COALESCE(due_date,'9999-99-99'),id) WHERE deleted_at IS NULL");
+        }catch(SQLException e){try{db.close();}catch(SQLException ignored){}throw new StorageException(STORE_UNAVAILABLE,"Cannot prepare task query indexes",e);}
+    }
     private void check() { if(closed) throw new StorageException(CLOSED,"Task store is closed"); }
     private interface Work<T> { T run() throws Exception; }
     private <T> T transaction(Work<T> work) {
@@ -76,12 +82,20 @@ public final class TodoRepository implements AutoCloseable {
         } catch(SQLException e) { throw new StorageException(STORE_UNAVAILABLE,"Cannot read task",e); }
     }
     private Todo row(ResultSet r) throws SQLException {
-        UUID uid=UUID.fromString(r.getString("uid"));
-        List<Todo.Source> sources=new ArrayList<>();
-        try(var p=db.prepareStatement("SELECT * FROM todo_sources WHERE todo_id=? ORDER BY document_uid")) {
-            p.setLong(1,r.getLong("id"));
-            try(var sr=p.executeQuery()) { while(sr.next()) sources.add(new Todo.Source(UUID.fromString(sr.getString("document_uid")),sr.getString("last_known_path"),sr.getString("source_hash"),sr.getString("heading"))); }
+        return row(r, sourcesFor(List.of(r.getLong("id"))).getOrDefault(r.getLong("id"),List.of()));
+    }
+    private Map<Long,List<Todo.Source>> sourcesFor(List<Long> ids)throws SQLException {
+        Map<Long,List<Todo.Source>> sources=new HashMap<>();
+        if(ids.isEmpty())return sources;
+        String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
+        try(var p=db.prepareStatement("SELECT * FROM todo_sources WHERE todo_id IN ("+placeholders+") ORDER BY todo_id,document_uid")){
+            for(int i=0;i<ids.size();i++)p.setLong(i+1,ids.get(i));
+            try(var sr=p.executeQuery()){while(sr.next())sources.computeIfAbsent(sr.getLong("todo_id"),key->new ArrayList<>()).add(new Todo.Source(UUID.fromString(sr.getString("document_uid")),sr.getString("last_known_path"),sr.getString("source_hash"),sr.getString("heading")));}
         }
+        return sources;
+    }
+    private Todo row(ResultSet r,List<Todo.Source> sources)throws SQLException {
+        UUID uid=UUID.fromString(r.getString("uid"));
         String due=r.getString("due_date");
         return new Todo(uid,r.getString("title"),r.getString("description_md"),TodoStatus.valueOf(r.getString("status").toUpperCase(Locale.ROOT)),due==null?null:LocalDate.parse(due),r.getInt("priority"),Instant.ofEpochMilli(r.getLong("created_at")),Instant.ofEpochMilli(r.getLong("updated_at")),instant(r,"completed_at"),instant(r,"deleted_at"),r.getLong("version"),sources);
     }
@@ -155,48 +169,87 @@ public final class TodoRepository implements AutoCloseable {
         sql.append(search?" ORDER BY rank,t.id":" ORDER BY COALESCE(t.due_date,'9999-99-99'),t.id");sql.append(" LIMIT ?");args.add(q.limit()+1);
         try(var p=db.prepareStatement(sql.toString())) {
             for(int i=0;i<args.size();i++)p.setObject(i+1,args.get(i));
-            List<Todo> items=new ArrayList<>();String cursor=null;boolean more=false;
+            List<Todo> items=new ArrayList<>();List<Long> ids=new ArrayList<>();String cursor=null;boolean more=false;
             try(var r=p.executeQuery()){while(r.next()){
                 if(items.size()==q.limit()){more=true;break;}
-                items.add(row(r));
+                ids.add(r.getLong("id"));items.add(row(r,List.of()));
                 cursor=Base64.getUrlEncoder().withoutPadding().encodeToString(JSON.writeValueAsBytes(Map.of("filter",fingerprint,"id",r.getLong("id"),"rank",r.getDouble("rank"),"due",r.getString("due_date")==null?"9999-99-99":r.getString("due_date"))));
             }}
+            Map<Long,List<Todo.Source>> sources=sourcesFor(ids);
+            for(int i=0;i<items.size();i++){
+                Todo t=items.get(i);items.set(i,new Todo(t.uid(),t.title(),t.descriptionMd(),t.status(),t.dueDate(),t.priority(),t.createdAt(),t.updatedAt(),t.completedAt(),t.deletedAt(),t.version(),sources.getOrDefault(ids.get(i),List.of())));
+            }
             return new Page(List.copyOf(items),more?cursor:null);
         }catch(Exception e){if(e instanceof StorageException se)throw se;throw new StorageException(STORE_UNAVAILABLE,"Cannot query tasks",e);}
     }
     public record Pending(UUID uid, LocalDate day, List<TodoCard> todos, EnumSet<ReminderSlot> slots) {}
-    private List<TodoCard> window(LocalDate today) throws SQLException {
-        List<TodoCard> cards=new ArrayList<>();
-        try(var p=db.prepareStatement("SELECT * FROM todos WHERE deleted_at IS NULL AND status='open' AND due_date<=?")){
-            p.setString(1,today.plusDays(3).toString());try(var r=p.executeQuery()){while(r.next())cards.add(row(r).card());}
+    private record ReminderTask(UUID uid,long version,TodoCard card) {}
+    private List<ReminderTask> window(LocalDate today,Set<String> wanted,ReminderTask after) throws SQLException {
+        List<ReminderTask> tasks=new ArrayList<>();
+        String sql="SELECT uid,version,title,due_date FROM todos WHERE deleted_at IS NULL AND status='open' AND due_date<=?";
+        if(wanted!=null){
+            if(wanted.isEmpty())return List.of();
+            sql+=" AND uid IN ("+String.join(",",Collections.nCopies(wanted.size(),"?"))+")";
         }
-        return TodoReminderPolicy.sort(cards);
+        if(after!=null)sql+=" AND (due_date,title COLLATE BINARY,uid)>(?,?,?)";
+        sql+=" ORDER BY due_date,title COLLATE BINARY,uid LIMIT 50";
+        try(var p=db.prepareStatement(sql)){
+            p.setString(1,today.plusDays(3).toString());int i=2;
+            if(wanted!=null)for(String uid:wanted)p.setString(i++,uid);
+            if(after!=null){p.setString(i++,after.card().due().toString());p.setString(i++,after.card().title());p.setString(i,after.uid().toString());}
+            try(var r=p.executeQuery()){while(r.next()){
+                UUID uid=UUID.fromString(r.getString("uid"));
+                tasks.add(new ReminderTask(uid,r.getLong("version"),new TodoCard(r.getString("title"),LocalDate.parse(r.getString("due_date")),TodoStatus.OPEN,"todo:"+uid)));
+            }}
+        }
+        return tasks;
     }
     public synchronized Optional<Pending> claim(LocalDateTime now) {
         return transaction(()-> {
             // Resume an unacknowledged batch before claiming another slot.
-            try(var p=db.prepareStatement("SELECT uid,day,payload_json FROM reminder_batches WHERE state='pending' ORDER BY created_at,uid")){try(var r=p.executeQuery()){
+            try(var p=db.prepareStatement("SELECT uid,day,payload_json FROM reminder_batches WHERE state='pending' ORDER BY created_at,rowid")){try(var r=p.executeQuery()){
                 while(r.next()){
                     UUID uid=UUID.fromString(r.getString(1));
-                    Set<String> wanted=new HashSet<>();for(var node:JSON.readTree(r.getString(3)).path("tasks"))wanted.add("todo:"+node.path("uid").asText());
-                    List<TodoCard> cards=window(now.toLocalDate()).stream().filter(t->wanted.contains(t.relativePath())).toList();
+                    var payload=JSON.readTree(r.getString(3)).path("tasks");
+                    if(payload.size()>50){
+                        // Split pre-upgrade pending snapshots without discarding their remaining tasks.
+                        for(int offset=50;offset<payload.size();offset+=50){
+                            var part=JSON.createArrayNode();for(int i=offset;i<Math.min(offset+50,payload.size());i++)part.add(payload.get(i));
+                            saveBatch(UUID.randomUUID(),LocalDate.parse(r.getString(2)),part);
+                        }
+                        var first=JSON.createArrayNode();for(int i=0;i<50;i++)first.add(payload.get(i));
+                        try(var update=db.prepareStatement("UPDATE reminder_batches SET payload_json=? WHERE uid=?")){
+                            update.setString(1,JSON.writeValueAsString(Map.of("formatVersion",1,"tasks",first)));update.setString(2,uid.toString());update.executeUpdate();
+                        }
+                        payload=first;
+                    }
+                    Set<String> wanted=new HashSet<>();for(var node:payload)wanted.add(node.path("uid").asText());
+                    List<TodoCard> cards=window(now.toLocalDate(),wanted,null).stream().map(ReminderTask::card).toList();
                     if(cards.isEmpty()){finishBatch(uid,"cancelled");continue;}
                     return Optional.of(new Pending(uid,LocalDate.parse(r.getString(2)),cards,slots(uid)));
                 }
             }}
-            List<TodoCard> cards=window(now.toLocalDate());if(cards.isEmpty())return Optional.empty();
             EnumSet<ReminderSlot> due=EnumSet.of(ReminderSlot.LOGIN);
             if(!now.toLocalTime().isBefore(LocalTime.of(10,0)))due.add(ReminderSlot.TEN);
             if(!now.toLocalTime().isBefore(LocalTime.of(14,0)))due.add(ReminderSlot.FOURTEEN);
             try(var p=db.prepareStatement("SELECT slot FROM reminder_slots WHERE day=?")){p.setString(1,now.toLocalDate().toString());try(var r=p.executeQuery()){while(r.next())due.remove(ReminderSlot.valueOf(r.getString(1)));}}
             if(due.isEmpty())return Optional.empty();
-            UUID uid=UUID.randomUUID();
-            try(var p=db.prepareStatement("INSERT INTO reminder_batches(uid,day,state,payload_json,created_at) VALUES(?,?,'pending',?,?)")){
-                p.setString(1,uid.toString());p.setString(2,now.toLocalDate().toString());p.setString(3,JSON.writeValueAsString(Map.of("formatVersion",1,"tasks",cards.stream().map(card->{Todo t=get(UUID.fromString(card.relativePath().substring(5)));return Map.of("uid",t.uid().toString(),"version",t.version());}).toList())));p.setLong(4,clock.millis());p.executeUpdate();
+            UUID uid=null;List<TodoCard> first=List.of();ReminderTask after=null;
+            while(true){
+                List<ReminderTask> tasks=window(now.toLocalDate(),null,after);if(tasks.isEmpty())break;
+                UUID batch=UUID.randomUUID();saveBatch(batch,now.toLocalDate(),tasks.stream().map(t->Map.of("uid",t.uid().toString(),"version",t.version())).toList());
+                if(uid==null){uid=batch;first=tasks.stream().map(ReminderTask::card).toList();}
+                after=tasks.getLast();if(tasks.size()<50)break;
             }
+            if(uid==null)return Optional.empty();
             for(var slot:due)try(var p=db.prepareStatement("INSERT INTO reminder_slots VALUES(?,?,?)")){p.setString(1,now.toLocalDate().toString());p.setString(2,slot.name());p.setString(3,uid.toString());p.executeUpdate();}
-            return Optional.of(new Pending(uid,now.toLocalDate(),cards,due));
+            return Optional.of(new Pending(uid,now.toLocalDate(),first,due));
         });
+    }
+    private void saveBatch(UUID uid,LocalDate day,Object tasks)throws Exception {
+        try(var p=db.prepareStatement("INSERT INTO reminder_batches(uid,day,state,payload_json,created_at) VALUES(?,?,'pending',?,?)")){
+            p.setString(1,uid.toString());p.setString(2,day.toString());p.setString(3,JSON.writeValueAsString(Map.of("formatVersion",1,"tasks",tasks)));p.setLong(4,clock.millis());p.executeUpdate();
+        }
     }
     private EnumSet<ReminderSlot> slots(UUID uid)throws SQLException{
         EnumSet<ReminderSlot> result=EnumSet.noneOf(ReminderSlot.class);

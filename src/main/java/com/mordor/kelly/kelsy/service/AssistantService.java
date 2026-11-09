@@ -112,6 +112,10 @@ public interface AssistantService extends AutoCloseable {
          * @param argsPreview 工具参数预览文本
          */
         void onToolCall(String name, String argsPreview);
+        default void onToolCall(String id,String name,String argsPreview){onToolCall(name,argsPreview);}
+        default void onToolArgs(String id,String name,String delta){onToolArgs(name,delta);}
+        default void onToolResult(String id,String name,String delta){onToolResult(name,delta);}
+        default void onToolResultEnd(String id,String name,boolean success){}
 
         /**
          * 工具调用参数增量。

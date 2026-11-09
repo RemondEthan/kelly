@@ -59,6 +59,10 @@ public final class KnowledgePane extends BorderPane {
     private String currentPath;
     private long openGeneration;
     private long sourcesGeneration;
+    private java.util.Map<String,com.mordor.kelly.kelsy.service.CitationTurn.Evidence> verified=java.util.Map.of();
+    public void setEvidence(java.util.List<com.mordor.kelly.kelsy.service.CitationTurn.Evidence> items){
+        verified=items.stream().collect(java.util.stream.Collectors.toUnmodifiableMap(com.mordor.kelly.kelsy.service.CitationTurn.Evidence::reference,e->e));
+    }
 
     /**
      * 创建知识库面板。
@@ -136,15 +140,17 @@ public final class KnowledgePane extends BorderPane {
             return;
         }
         currentPath = relativePath;
+        var evidence=verified.get(relativePath);
+        java.util.function.Supplier<KnowledgeStore.Read> readDocument=()->evidence==null?store.read(relativePath):store.read(relativePath,evidence.path(),evidence.hash(),evidence.version());
         long generation=++openGeneration;
         if(javafx.application.Platform.isFxApplicationThread()) {
             host.setContent(new Label("正在读取…"));
-            java.util.concurrent.CompletableFuture.supplyAsync(() -> store.read(relativePath))
+            java.util.concurrent.CompletableFuture.supplyAsync(readDocument)
                 .whenComplete((read,error) -> javafx.application.Platform.runLater(() -> {
                     if(generation!=openGeneration)return;
                     render(relativePath,error==null?read:new KnowledgeStore.Read.Rejected(error.getMessage()));
                 }));
-        } else render(relativePath,store.read(relativePath));
+        } else render(relativePath,readDocument.get());
     }
 
     private void render(String relativePath,KnowledgeStore.Read read) {

@@ -23,6 +23,8 @@ public record AskGrounding(boolean searched, List<KnowledgeStore.Hit> attached, 
         if (store == null) return new AskGrounding(false, List.of(), userText);
         if (LocalEvidence.mentionsTodos(userText)) return new AskGrounding(false, List.of(),
             "【任务查询】请先使用 todo_list/get 获取实时状态；涉及文章事实时再 knowledge_search。\n" + userText);
+        if(store.index()==null)return new AskGrounding(false,List.of(),"【知识检索暂不可用】可以继续处理一般请求；不要据此声称历史事实不存在。\n"+userText);
+        try {
         double min = LocalEvidence.looksLikeRecall(userText) ? RECALL_MIN_SCORE : DEFAULT_MIN_SCORE;
         FindQuery parsed = FindQuery.parse(userText, today);
         String kind = LocalEvidence.mentionsMeetings(userText) ? "meeting" : LocalEvidence.mentionsDecisions(userText) ? "decision" : null;
@@ -41,6 +43,7 @@ public record AskGrounding(boolean searched, List<KnowledgeStore.Hit> attached, 
         String state = store.index() == null ? "FAILED" : store.index().status().state();
         String original = "STALE".equals(state) ? "【部分知识文件未索引】现有候选仍可使用；不要自动修复、删除文件或反复重试。\n" + userText : "READY".equals(state) ? userText : "【知识索引状态：" + state + "】空结果不代表没有归档，请稍后补查。\n" + userText;
         return new AskGrounding(true, attached, original);
+        }catch(RuntimeException e){return new AskGrounding(false,List.of(),"【知识检索暂不可用】可以继续处理一般请求；涉及已归档事实需说明尚未核验，不要推测。\n"+userText);}
     }
 
     public String messageForModel() {

@@ -481,8 +481,34 @@ public final class KnowledgeStore implements AutoCloseable {
      * @param relativePath 相对于工作空间的路径
      * @return 读取结果（Ok/Missing/TooLarge/Rejected）
      */
+    /** Re-open a verified citation without silently displaying a newer revision as its evidence. */
+    public Read read(String reference,String expectedPath,String expectedHash,Long expectedVersion) {
+        if(expectedPath!=null&&reference!=null&&reference.startsWith("article:"))try{
+            java.util.UUID uid=java.util.UUID.fromString(reference.substring(8));
+            String path=expectedPath;
+            if(index!=null)try{path=index.pathFor(uid);}catch(com.mordor.kelly.kelsy.storage.StorageException ignored){/* Known path is revalidated below. */}
+            var article=new MarkdownDocumentStore(workspace).read(path,expectedHash);
+            if(!article.uid().equals(uid))return new Read.Rejected("文章来源身份已变化，请重新检索");
+            return new Read.Ok(reference,article.markdown());
+        }catch(RuntimeException e){return new Read.Rejected(e.getMessage());}
+        return read(reference,expectedHash,expectedVersion);
+    }
+
+    public Read read(String reference,String expectedHash,Long expectedVersion) {
+        if(expectedVersion!=null&&reference!=null&&reference.startsWith("todo:"))try{
+            var task=todos.get(java.util.UUID.fromString(reference.substring(5)));
+            if(task.version()!=expectedVersion)return new Read.Rejected("任务已更新，请重新查询后核验来源");
+            return new Read.Ok(reference,task.markdown());
+        }catch(RuntimeException e){return new Read.Rejected(e.getMessage());}
+        Read result=read(reference);
+        if(result instanceof Read.Ok ok&&expectedHash!=null&&!MarkdownDocumentStore.hash(ok.markdown()).equals(expectedHash))
+            return new Read.Rejected("文章已更新，请重新检索后核验来源");
+        return result;
+    }
+
     public Read read(String relativePath) {
         if(relativePath != null && relativePath.startsWith("article:")) {
+            if(index==null)return new Read.Rejected("知识索引暂不可用，请通过文件路径打开");
             try { relativePath = index.pathFor(java.util.UUID.fromString(relativePath.substring(8))); }
             catch(RuntimeException e) { return new Read.Rejected(e.getMessage()); }
         }

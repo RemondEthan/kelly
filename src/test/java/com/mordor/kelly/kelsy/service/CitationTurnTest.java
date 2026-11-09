@@ -1,147 +1,54 @@
 package com.mordor.kelly.kelsy.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 class CitationTurnTest {
-
-    @Test
-    void beginAskDoesNotClearShown() {
-        CitationTurn t = new CitationTurn();
-        t.addRetrievalText("read knowledge/meetings/a.md");
-        assertTrue(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/meetings/a.md"), t.shown());
-        t.beginAsk();
-        assertEquals(List.of("knowledge/meetings/a.md"), t.shown());
-        assertFalse(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/meetings/a.md"), t.shown());
+    private static final ObjectMapper JSON=new ObjectMapper();
+    private static String task(UUID uid,long version)throws Exception{
+        return JSON.writeValueAsString(Map.of("ok",true,"data",Map.of("uid",uid.toString(),"version",version)));
     }
-
-    @Test
-    void commitReplacesShownWhenPendingNonEmpty() {
-        CitationTurn t = new CitationTurn();
-        t.addRetrievalText("knowledge/meetings/old.md");
-        t.commitIfRetrieved();
-        t.beginAsk();
-        t.addRetrievalText("见 knowledge/meetings/new.md 和 memory/2026-09-04.md");
-        assertTrue(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/meetings/new.md", "memory/2026-09-04.md"), t.shown());
-        assertEquals("memory/2026-09-04.md", t.lastShown());
+    @Test void argumentsFailureListingsAndGeneratedProseAreNotEvidence(){
+        CitationTurn t=new CitationTurn();t.beginAsk();
+        t.beginTool("knowledge_get");t.appendToolArgs("{\"path\":\"knowledge/missing.md\"}");
+        t.appendToolResult("{\"ok\":false,\"error\":{\"code\":\"NOT_FOUND\"}}");
+        t.beginTool("list_files");t.appendToolResult("knowledge/a.md");
+        t.addRetrievalText("来源：knowledge/fabricated.md");t.finishTools();
+        assertFalse(t.commitIfRetrieved());assertTrue(t.shown().isEmpty());
     }
-
-    @Test
-    void writesAreNotRetrievals() {
-        assertFalse(CitationTurn.isRetrievalTool("memory_save"));
-        assertFalse(CitationTurn.isRetrievalTool("write_file"));
-        assertFalse(CitationTurn.isRetrievalTool("edit_file"));
-        assertTrue(CitationTurn.isRetrievalTool("memory_get"));
-        assertTrue(CitationTurn.isRetrievalTool("memory_search"));
-        assertTrue(CitationTurn.isRetrievalTool("knowledge_search"));
-        assertTrue(CitationTurn.isRetrievalTool("read_file"));
-        assertTrue(CitationTurn.isRetrievalTool("list_files"));
-        CitationTurn t = new CitationTurn();
-        t.addRetrievalText("knowledge/meetings/a.md");
-        t.commitIfRetrieved();
-        t.beginAsk();
-        assertFalse(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/meetings/a.md"), t.shown());
+    @Test void successfulTaskResultRetainsVersionAndNewTurnClearsIt()throws Exception{
+        CitationTurn t=new CitationTurn();UUID uid=UUID.randomUUID();t.beginTool("todo_get");
+        String output=task(uid,3);t.appendToolResult(output.substring(0,output.length()/2));
+        assertTrue(t.pendingPaths().isEmpty());t.appendToolResult(output.substring(output.length()/2));t.finishTools();
+        assertTrue(t.commitIfRetrieved());assertEquals(List.of("todo:"+uid),t.shown());
+        assertEquals(3L,t.evidence().getFirst().version());t.beginAsk();
+        assertTrue(t.shown().isEmpty());assertTrue(t.evidence().isEmpty());assertFalse(t.commitIfRetrieved());
     }
-
-    @Test
-    void splitDeltasStillExtractPath() {
-        CitationTurn t = new CitationTurn();
-        t.beginTool("read_file");
-        t.appendToolArgs("{\"path\":\"knowledge/meetings/2026-09-04-");
-        assertTrue(t.pendingPaths().isEmpty());
-        t.appendToolArgs("业务.md\"}");
-        assertEquals(List.of("knowledge/meetings/2026-09-04-业务.md"), t.pendingPaths());
-        t.appendToolResult("正文前半 knowledge/meetings/2026-09-04-");
-        t.appendToolResult("业务连接部-cursor账号管理.md 后半");
-        assertEquals(
-                List.of("knowledge/meetings/2026-09-04-业务.md",
-                        "knowledge/meetings/2026-09-04-业务连接部-cursor账号管理.md"),
-                t.pendingPaths());
+    @Test void interleavedSameNameCallsRemainSeparateAndFailedEndIsExcluded()throws Exception{
+        CitationTurn t=new CitationTurn();UUID good=UUID.randomUUID(),bad=UUID.randomUUID();
+        t.beginTool("a","todo_get");t.beginTool("b","todo_get");
+        t.appendToolResult("a",task(good,1));t.appendToolResult("b",task(bad,2));
+        t.finishTool("a",true);t.finishTool("b",false);t.finishTools();
+        assertEquals(List.of("todo:"+good),t.pendingPaths());
     }
-
-    @Test
-    void toolNameAloneDoesNotAddPath() {
-        CitationTurn t = new CitationTurn();
-        t.beginTool("read_file");
-        t.appendToolResult("read_file");
-        assertTrue(t.pendingPaths().isEmpty());
-        t.beginTool("write_file");
-        t.appendToolArgs("{\"path\":\"knowledge/meetings/a.md\"}");
-        assertTrue(t.pendingPaths().isEmpty());
+    @Test void verifiedArticleHashMustMatchReturnedMarkdown()throws Exception{
+        CitationTurn t=new CitationTurn();String uid=UUID.randomUUID().toString(),raw="# Title\n正文";
+        t.beginTool("knowledge_get");t.appendToolResult(JSON.writeValueAsString(Map.of("ok",true,"data",Map.of("uid",uid,"path","knowledge/a.md","hash",MarkdownDocumentStore.hash(raw),"markdown",raw))));
+        t.finishTools();assertTrue(t.commitIfRetrieved());assertEquals(List.of("article:"+uid),t.shown());
+        assertEquals(MarkdownDocumentStore.hash(raw),t.evidence().getFirst().hash());
+        t.beginAsk();t.beginTool("knowledge_get");t.appendToolResult(JSON.writeValueAsString(Map.of("ok",true,"data",Map.of("uid",uid,"path","knowledge/a.md","hash",MarkdownDocumentStore.hash(raw),"markdown","different"))));
+        t.finishTools();assertFalse(t.commitIfRetrieved());
     }
-
-    @Test
-    void replaceShownOpensFirst() {
-        CitationTurn t = new CitationTurn();
-        t.addRetrievalText("knowledge/meetings/old.md");
-        t.commitIfRetrieved();
-        t.replaceShown(List.of(
-                "knowledge/todos/2026-09-10-申请-licence.md",
-                "knowledge/todos/2026-09-12-发周报.md"));
-        assertEquals(
-                List.of("knowledge/todos/2026-09-10-申请-licence.md",
-                        "knowledge/todos/2026-09-12-发周报.md"),
-                t.shown());
-        assertEquals("knowledge/todos/2026-09-10-申请-licence.md", t.firstShown());
-        assertEquals("knowledge/todos/2026-09-12-发周报.md", t.lastShown());
+    @Test void trailingMalformedOutputAndSearchCandidatesAreNotVerified()throws Exception{
+        CitationTurn t=new CitationTurn();t.beginTool("todo_get");t.appendToolResult(task(UUID.randomUUID(),1)+" garbage");
+        t.beginTool("knowledge_search");t.appendToolResult("{\"ok\":true,\"data\":{\"hits\":[{\"path\":\"knowledge/a.md\"}]}}");
+        t.finishTools();assertTrue(t.pendingPaths().isEmpty());
     }
-
-    @Test
-    void addPathsCommitsForFind() {
-        CitationTurn t = new CitationTurn();
-        t.addPaths(List.of("knowledge/meetings/hit.md"));
-        assertTrue(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/meetings/hit.md"), t.shown());
-    }
-
-    @Test
-    void addPathsSkipsKnowledgeCatalog() {
-        CitationTurn t = new CitationTurn();
-        t.addPaths(List.of("knowledge/KNOWLEDGE.md", "knowledge/meetings/hit.md"));
-        assertTrue(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/meetings/hit.md"), t.shown());
-    }
-
-    @Test
-    void listFilesIsRetrieval() {
-        assertTrue(CitationTurn.isRetrievalTool("list_files"));
-        CitationTurn t = new CitationTurn();
-        t.beginTool("list_files");
-        t.appendToolResult("[FILE] knowledge/todos/2026-09-07-给晓慧发kelly代码.md (180 bytes)");
-        assertEquals(List.of("knowledge/todos/2026-09-07-给晓慧发kelly代码.md"), t.pendingPaths());
-    }
-
-    @Test
-    void replySourceOpensTodoCard() {
-        CitationTurn t = new CitationTurn();
-        t.beginAsk();
-        t.addRetrievalText("""
-                有一张 open 的待办：
-                - 给晓慧发 kelly 代码，截止 2026-09-07
-                  来源：`knowledge/todos/2026-09-07-给晓慧发kelly代码.md`
-                """);
-        assertTrue(t.commitIfRetrieved());
-        assertEquals(List.of("knowledge/todos/2026-09-07-给晓慧发kelly代码.md"), t.shown());
-        assertEquals("knowledge/todos/2026-09-07-给晓慧发kelly代码.md", t.evidencePath());
-    }
-
-    @Test
-    void evidencePathPrefersKnowledgeCardOverIndex() {
-        CitationTurn t = new CitationTurn();
-        t.addRetrievalText(
-                "todo 卡：knowledge/todos/2026-09-07-给晓慧发kelly代码.md "
-                        + "索引：knowledge/KNOWLEDGE.md 记忆：MEMORY.md memory/2026-09-04.md");
-        assertTrue(t.commitIfRetrieved());
-        assertEquals("knowledge/todos/2026-09-07-给晓慧发kelly代码.md", t.evidencePath());
-        assertEquals("memory/2026-09-04.md", t.lastShown());
+    @Test void findAndReminderPathsAreExplicitNavigationSources(){
+        CitationTurn t=new CitationTurn();t.addPaths(List.of("knowledge/KNOWLEDGE.md","knowledge/a.md"));
+        assertTrue(t.commitIfRetrieved());assertEquals(List.of("knowledge/a.md"),t.shown());
+        t.replaceShown(List.of("todo:"+UUID.randomUUID()));assertTrue(t.firstShown().startsWith("todo:"));
     }
 }

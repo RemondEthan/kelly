@@ -32,6 +32,8 @@ todo_update 完整替换标题、说明、截止日期、优先级；需要保�
 查询会议/决定优先使用 kind=meeting/decision；query 可省略，tags 多项按 AND 过滤，from 包含、before 不包含。
 同一文章中分散在不同段落的关键词也可联合检索；不要因正文未出现“会议”二字便排除 meeting 文章。
 最多读取5篇相关原文，引用 article:<uuid> 或实际路径。
+来源面板只把成功 knowledge_get 或 todo_get/list 的结果视为已核验来源；检索候选、目录列表和回答中的路径文字不代表核验成功。
+文章来源使用 UUID、路径和 hash 核验，任务使用 UUID/version；来源发生变化时重新读取，不把新版本冒充原证据。
 BUILDING/STALE/FAILED 表示索引未就绪、陈旧或失败，空结果不能据此说没有归档。
 读取冲突时刷新搜索；不能把陈旧片段当成最新结论。
 禁止使用内置 memory_search，不为查一条事实遍历整个目录。

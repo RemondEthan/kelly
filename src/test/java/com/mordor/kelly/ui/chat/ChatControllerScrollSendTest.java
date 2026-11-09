@@ -71,6 +71,7 @@ class ChatControllerScrollSendTest {
 
         assertTrue(c.send("after-scroll").accepted());
         history.flush(2, TimeUnit.SECONDS);
+        FxTestSupport.drain(); // Disk completion and JavaFX callback completion are separate barriers.
 
         List<Message> shown = List.copyOf(c.getMessages());
         assertEquals("after-scroll", shown.get(shown.size() - 1).content());

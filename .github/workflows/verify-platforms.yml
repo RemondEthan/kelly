@@ -1,0 +1,48 @@
+name: Verify desktop platforms
+
+on:
+  push:
+    branches: [main, master, 'codex/**', 'feat/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install Linux display libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0
+      - name: Run platform tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            xvfb-run -a mvn -B test -Djava.awt.headless=true -Djava.util.prefs.userRoot="${{ runner.temp }}/kelly-test-prefs"
+          else
+            mvn -B test -Djava.awt.headless=true -Djava.util.prefs.userRoot="${{ runner.temp }}/kelly-test-prefs"
+          fi
+      - name: Record optional platform performance probe
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: mvn -B test-compile exec:java -Dexec.mainClass=com.mordor.kelly.kelsy.service.KnowledgePerformanceProbe -Dexec.classpathScope=test -Dkelly.benchmark.report=target/kelsy-benchmark.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            target/surefire-reports/
+            target/kelsy-benchmark.json

@@ -74,6 +74,7 @@ public final class KnowledgeSearchTool implements AgentTool {
                 }
                 if(query.length()>400)throw new IllegalArgumentException("Query too long");
                 if(searchTermsEmpty(query,kind,tags,from))throw new IllegalArgumentException("Provide keywords or filters");
+                if(store.index()==null)throw new com.mordor.kelly.kelsy.storage.StorageException(com.mordor.kelly.kelsy.storage.StorageException.Code.INDEX_UNAVAILABLE,"Article index unavailable");
                 List<KnowledgeStore.Hit> hits = store.index().search(new FindQuery(from,to,parsed.keywords()),kind,tags,MAX_RESULTS);
                 var status = store.index().status();
                 var data = new LinkedHashMap<String,Object>();
@@ -81,8 +82,9 @@ public final class KnowledgeSearchTool implements AgentTool {
                     "path",h.relativePath(),"uid",h.documentUid(),"citation",h.relativePath().startsWith("knowledge/")?"article:"+h.documentUid():h.relativePath(),"hash",h.contentHash(),
                     "line",h.line(),"snippet",h.snippet(),"rank",h.rank())).toList());
                 data.put("indexState",status.state());
+                data.put("syncDegraded",status.errors().containsKey("<watch>"));
                 // File-level maintenance diagnostics must not drive destructive agent repairs.
-                data.put("unindexedFileCount",status.errors().keySet().stream().filter(p -> !p.equals("<scan>")).count());
+                data.put("unindexedFileCount",status.errors().keySet().stream().filter(p -> !p.startsWith("<")).count());
                 if(!status.errors().isEmpty())data.put("maintenanceNote",
                     "部分文件未索引，其他检索结果仍可用。格式问题需在维护流程中处理，不要自动修复、删除文件或反复重试检索。");
                 data.put("lastReconciledAt",status.lastReconciledAt()==null?null:status.lastReconciledAt().toString());
