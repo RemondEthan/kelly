@@ -36,7 +36,7 @@ public final class KnowledgePathExtractor {
      * 匹配 MEMORY.md、AGENTS.md、memory/xxx.md、knowledge/xxx.md 等路径。
      */
     private static final Pattern PATH = Pattern.compile(
-            "(?:MEMORY\\.md|AGENTS\\.md|memory/[\\p{L}\\p{N}._/-]+\\.md|knowledge/[\\p{L}\\p{N}._/-]+\\.md)");
+            "(?:todo:[0-9a-fA-F-]{36}|article:[0-9a-fA-F-]{36}|MEMORY\\.md|AGENTS\\.md|memory/[\\p{L}\\p{N}._/-]+\\.md|knowledge/[\\p{L}\\p{N}._/-]+\\.md)");
 
     /** 私有构造函数，防止实例化 */
     private KnowledgePathExtractor() {

@@ -1,439 +1,181 @@
 package com.mordor.kelly.kelsy.service;
 
-import com.mordor.kelly.common.Diagnostics;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mordor.kelly.kelsy.storage.*;
+import java.nio.file.*;
+import java.sql.*;
+import java.time.*;
+import java.util.*;
+import static com.mordor.kelly.kelsy.storage.StorageException.Code.*;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-
+/** Disposable article index. Search never scans the filesystem. All JDBC access is serialized. */
 public final class KnowledgeIndex implements AutoCloseable {
-
-    private static final String SCHEMA_VERSION = "1";
-    static final long RECONCILE_TTL_NANOS = TimeUnit.SECONDS.toNanos(2);
-    private static final long SLOW_RECONCILE_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
-
+    static final long RECONCILE_TTL_NANOS=java.util.concurrent.TimeUnit.MINUTES.toNanos(5);
     private final Path workspace;
-    private final Connection conn;
-    private long lastReconcileNanos;
-
-    private KnowledgeIndex(Path workspace, Connection conn) {
-        this.workspace = workspace;
-        this.conn = conn;
-    }
-
-    public static KnowledgeIndex open(Path workspace) {
-        Path root = workspace.toAbsolutePath().normalize();
-        Path db = root.resolve(".kelly-index.db");
-        try {
-            return connect(root, db);
-        } catch (ClassNotFoundException | SQLException first) {
-            deleteIndexFiles(root);
+    private final Connection db;
+    private final MarkdownDocumentStore files;
+    private final ObjectMapper json=new ObjectMapper();
+    private final Map<String,String> errors=new LinkedHashMap<>();
+    private final Map<String,String> invalidHashes=new LinkedHashMap<>();
+    private KnowledgeSyncService sync;
+    private volatile boolean building=true,closed,truncated;
+    public boolean truncated(){return truncated;}
+    private volatile Instant reconciled;
+    public record Status(String state,Instant lastReconciledAt,Map<String,String> errors) {}
+    private KnowledgeIndex(Path root,Connection db){this.workspace=root;this.db=db;this.files=new MarkdownDocumentStore(root);}
+    public static KnowledgeIndex open(Path workspace){
+        Path root=workspace.toAbsolutePath().normalize();
+        try { return new KnowledgeIndex(root,DatabaseBootstrap.open(root,true)); }
+        catch (StorageException first) {
+            Path db=root.resolve(".kelly-index.db");
+            if(!Files.isRegularFile(db,LinkOption.NOFOLLOW_LINKS))throw first;
             try {
-                return connect(root, db);
-            } catch (ClassNotFoundException | SQLException second) {
-                throw new UncheckedIOException(new IOException("failed to open knowledge index", second));
-            }
+                String suffix=".damaged-"+UUID.randomUUID();
+                for(String name:List.of(".kelly-index.db",".kelly-index.db-wal",".kelly-index.db-shm")) {
+                    Path source=root.resolve(name);
+                    if(Files.exists(source,LinkOption.NOFOLLOW_LINKS))Files.move(source,root.resolve(name+suffix));
+                }
+                return new KnowledgeIndex(root,DatabaseBootstrap.open(root,true));
+            } catch(java.io.IOException e) { throw new StorageException(INDEX_UNAVAILABLE,"Cannot rebuild derived index",e); }
         }
     }
-
-    private static KnowledgeIndex connect(Path root, Path db) throws ClassNotFoundException, SQLException {
-        Class.forName("org.sqlite.JDBC");
-        Connection conn = DriverManager.getConnection("jdbc:sqlite:" + db);
-        try (Statement s = conn.createStatement()) {
-            s.execute("PRAGMA journal_mode=WAL");
-        }
-        KnowledgeIndex index = new KnowledgeIndex(root, conn);
-        index.ensureSchema();
-        return index;
-    }
-
-    private static void deleteIndexFiles(Path root) {
-        for (String name : List.of(".kelly-index.db", ".kelly-index.db-wal", ".kelly-index.db-shm")) {
-            Path p = root.resolve(name);
-            try {
-                Files.deleteIfExists(p);
-            } catch (IOException ignored) {
-            }
-        }
-    }
-
-    public void reconcileIfStale() {
-        long now = System.nanoTime();
-        if (lastReconcileNanos > 0 && now - lastReconcileNanos < RECONCILE_TTL_NANOS) {
-            return;
-        }
-        reconcile();
-    }
-
-    public void reconcile() {
-        long start = System.nanoTime();
-        try {
-            Set<String> disk = collectDiskPaths();
-            Set<String> indexed = indexedPaths();
-            for (String path : indexed) {
-                if (!disk.contains(path)) {
-                    delete(path);
+    public synchronized void start(){if(sync==null){sync=new KnowledgeSyncService(workspace,this);sync.start();}}
+    public synchronized Status status(){return new Status(building?"BUILDING":errors.isEmpty()?"READY":"STALE",reconciled,Map.copyOf(errors));}
+    /** Explicit background/maintenance hook; retained for callers, never called by search. */
+    public void reconcileIfStale(){ if(reconciled==null||Duration.between(reconciled,Instant.now()).toMinutes()>=5)reconcile(); }
+    public synchronized void reconcile(){
+        check();Set<String> disk=new LinkedHashSet<>();
+        try{
+            for(String dir:List.of("knowledge","memory")){
+                Path base=workspace.resolve(dir);if(!Files.isDirectory(base))continue;
+                try(var stream=Files.walk(base)){
+                    stream.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).map(p->workspace.relativize(p).toString().replace('\\','/')).filter(KnowledgeIndex::indexable).forEach(disk::add);
                 }
             }
-            for (String path : disk) {
-                Long stored = indexedMtime(path);
-                long mtime = Files.getLastModifiedTime(resolve(path)).toMillis();
-                if (stored == null || stored != mtime) {
-                    upsert(path);
+            if(Files.isRegularFile(workspace.resolve("MEMORY.md")))disk.add("MEMORY.md");
+            for(String path:disk){try{upsert(path);}catch(RuntimeException e){errors.put(path,e.getMessage());}}
+            List<String> gone=new ArrayList<>();try(var s=db.createStatement();var r=s.executeQuery("SELECT path FROM documents")){while(r.next())if(!disk.contains(r.getString(1)))gone.add(r.getString(1));}
+            for(String path:gone)delete(path);
+            errors.keySet().removeIf(p->!disk.contains(p));
+            invalidHashes.keySet().removeIf(p->!disk.contains(p));
+            reconciled=Instant.now();building=false;
+        }catch(Exception e){building=false;errors.put("<scan>",Objects.toString(e.getMessage(),"Scan failed"));throw failure(e);}
+    }
+    static boolean indexable(String p){return p.equals("MEMORY.md") || (p.endsWith(".md")&&(p.startsWith("memory/")||(p.startsWith("knowledge/")&&!p.startsWith("knowledge/todos/")&&!p.equals("knowledge/KNOWLEDGE.md"))));}
+    private void check(){if(closed)throw new StorageException(CLOSED,"Article index closed");}
+    private StorageException failure(Exception e){return e instanceof StorageException se?se:new StorageException(INDEX_UNAVAILABLE,"Article index unavailable",e);}
+    public synchronized void upsert(String path){
+        check();if(!indexable(path))return;
+        try{
+            Path p=files.safe(path);
+            if(!Files.isRegularFile(p)){delete(path);return;}
+            String raw=files.readText(path),hash=MarkdownDocumentStore.hash(raw);
+            if(hash.equals(invalidHashes.get(path)))return;
+            try(var q=db.prepareStatement("SELECT content_hash,state FROM documents WHERE path=?")){q.setString(1,path);try(var r=q.executeQuery()){if(r.next()&&r.getString(1).equals(hash)&&r.getString(2).equals("ready")&&!errors.containsKey(path)){return;}}}
+            MarkdownDocumentStore.Article article;
+            try { article=path.startsWith("knowledge/")?MarkdownDocumentStore.parse(path,raw):null; }
+            catch(StorageException e) {
+                if(e.code()!=INVALID_ARGUMENT)throw e;
+                // Never index malformed articles, including old cached chunks.
+                delete(path);
+                invalidHashes.put(path,hash);
+                errors.put(path,"Invalid article metadata; explicit migration required");
+                return;
+            }
+            invalidHashes.remove(path);
+            UUID uid=article==null?UUID.nameUUIDFromBytes(("kelly:system:"+path).getBytes(java.nio.charset.StandardCharsets.UTF_8)):article.uid();
+            String title=article==null?path:article.title(),kind=article==null?(path.equals("MEMORY.md")?"memory":"daily"):article.kind();
+            String date=article==null?(path.startsWith("memory/")?path.substring(7,Math.min(path.length(),17)):null):article.date()==null?null:article.date().toString();
+            try(var q=db.prepareStatement("SELECT path FROM documents WHERE document_uid=? AND path<>?")){
+                q.setString(1,uid.toString());q.setString(2,path);try(var r=q.executeQuery()){if(r.next()){
+                    String other=r.getString(1);
+                    if(Files.exists(files.safe(other))) {errors.put(other,"Duplicate document ID");throw new StorageException(IDENTITY_CONFLICT,"Duplicate document ID: "+other);}
+                    delete(other);
+                }}
+            }
+            try(var s=db.createStatement()){s.execute("BEGIN IMMEDIATE");}
+            try{
+                try(var q=db.prepareStatement("INSERT INTO documents(document_uid,path,kind,title,aliases_json,event_date,mtime_ms,size_bytes,content_hash,parser_version,state) VALUES(?,?,?,?,?,?,?,?,?,1,'ready') ON CONFLICT(path) DO UPDATE SET document_uid=excluded.document_uid,kind=excluded.kind,title=excluded.title,aliases_json=excluded.aliases_json,event_date=excluded.event_date,mtime_ms=excluded.mtime_ms,size_bytes=excluded.size_bytes,content_hash=excluded.content_hash,parser_version=1,state='ready'")){
+                    q.setString(1,uid.toString());q.setString(2,path);q.setString(3,kind);q.setString(4,title);q.setString(5,json.writeValueAsString(article==null?List.of():article.aliases()));q.setString(6,date);q.setLong(7,Files.getLastModifiedTime(p).toMillis());q.setLong(8,Files.size(p));q.setString(9,hash);q.executeUpdate();
                 }
-            }
-            lastReconcileNanos = System.nanoTime();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } catch (SQLException e) {
-            throw new UncheckedIOException(new IOException(e));
-        } finally {
-            long took = System.nanoTime() - start;
-            if (took >= SLOW_RECONCILE_NANOS) {
-                Diagnostics.warn("kelsy", "knowledge reconcile took %dms", took / 1_000_000L);
-            }
-        }
-    }
-
-    public void upsert(String relativePath) {
-        Path path = resolve(relativePath);
-        if (path == null) {
-            return;
-        }
-        if (!Files.isRegularFile(path)) {
-            delete(relativePath);
-            return;
-        }
-        try {
-            long mtime = Files.getLastModifiedTime(path).toMillis();
-            long size = Files.size(path);
-            String markdown = "";
-            String body = "";
-            if (size <= KnowledgeStore.MAX_FILE_BYTES) {
-                markdown = Files.readString(path);
-                body = markdown;
-            }
-            CardFields fields = CardFields.parse(relativePath, markdown);
-            try (PreparedStatement meta = conn.prepareStatement(
-                    """
-                    INSERT OR REPLACE INTO cards_meta(path, mtime, type, date, who, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """);
-                 PreparedStatement del = conn.prepareStatement("DELETE FROM cards_fts WHERE path=?");
-                 PreparedStatement fts = conn.prepareStatement(
-                         """
-                         INSERT INTO cards_fts(path, title, aliases, body, type, who, date)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                         """)) {
-                meta.setString(1, relativePath);
-                meta.setLong(2, mtime);
-                meta.setString(3, fields.type());
-                meta.setString(4, fields.date());
-                meta.setString(5, fields.who());
-                meta.setString(6, fields.status());
-                meta.executeUpdate();
-                del.setString(1, relativePath);
-                del.executeUpdate();
-                fts.setString(1, relativePath);
-                fts.setString(2, CjkNgrams.forIndex(fields.title()));
-                fts.setString(3, CjkNgrams.forIndex(fields.aliases()));
-                fts.setString(4, CjkNgrams.forIndex(body));
-                fts.setString(5, CjkNgrams.forIndex(fields.type()));
-                fts.setString(6, CjkNgrams.forIndex(fields.who()));
-                fts.setString(7, CjkNgrams.forIndex(fields.date()));
-                fts.executeUpdate();
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } catch (SQLException e) {
-            throw new UncheckedIOException(new IOException(e));
-        }
-    }
-
-    public void delete(String relativePath) {
-        if (resolve(relativePath) == null) {
-            return;
-        }
-        try (PreparedStatement meta = conn.prepareStatement("DELETE FROM cards_meta WHERE path=?");
-             PreparedStatement fts = conn.prepareStatement("DELETE FROM cards_fts WHERE path=?")) {
-            meta.setString(1, relativePath);
-            meta.executeUpdate();
-            fts.setString(1, relativePath);
-            fts.executeUpdate();
-        } catch (SQLException e) {
-            throw new UncheckedIOException(new IOException(e));
-        }
-    }
-
-    public List<KnowledgeStore.Hit> search(FindQuery query, int limit) {
-        int cap = Math.max(0, limit);
-        if (query.keywords().isEmpty()) {
-            if (query.fromInclusive() == null) {
-                return List.of();
-            }
-            return searchByDate(query, cap);
-        }
-        String match = matchExpression(query.keywords());
-        if (match.isBlank()) {
-            return List.of();
-        }
-        // Date filtering happens in Java. When a window is set, do not SQL-LIMIT
-        // before that filter — in-window hits can rank below out-of-window rows.
-        boolean dateWindow = query.fromInclusive() != null;
-        String sql = dateWindow
-                ? """
-                SELECT path, snippet(cards_fts, 3, '', '', '…', 20) AS snip, bm25(cards_fts) AS rank
-                FROM cards_fts WHERE cards_fts MATCH ?
-                ORDER BY rank
-                """
-                : """
-                SELECT path, snippet(cards_fts, 3, '', '', '…', 20) AS snip, bm25(cards_fts) AS rank
-                FROM cards_fts WHERE cards_fts MATCH ?
-                ORDER BY rank LIMIT ?
-                """;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, match);
-            if (!dateWindow) {
-                ps.setInt(2, cap);
-            }
-            List<KnowledgeStore.Hit> hits = new ArrayList<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String path = rs.getString("path");
-                    String date = metaDate(path);
-                    if (!passesDate(path, date, query)) {
-                        continue;
+                long id;try(var q=db.prepareStatement("SELECT id FROM documents WHERE path=?")){q.setString(1,path);try(var r=q.executeQuery()){r.next();id=r.getLong(1);}}
+                try(var q=db.prepareStatement("DELETE FROM chunks WHERE document_id=?")){q.setLong(1,id);q.executeUpdate();}
+                try(var q=db.prepareStatement("DELETE FROM document_tags WHERE document_id=?")){q.setLong(1,id);q.executeUpdate();}
+                if(article!=null)for(String tag:new LinkedHashSet<>(article.tags()))try(var q=db.prepareStatement("INSERT INTO document_tags VALUES(?,?)")){q.setLong(1,id);q.setString(2,tag);q.executeUpdate();}
+                String aliases=article==null?"":String.join(" ",article.aliases());
+                int ordinal=0;for(Chunk chunk:chunks(raw,article==null?1:article.bodyLine())){
+                    long chunkId;
+                    try(var q=db.prepareStatement("INSERT INTO chunks(document_id,ordinal,heading,start_line,end_line,raw_text) VALUES(?,?,?,?,?,?) RETURNING id")){
+                        q.setLong(1,id);q.setInt(2,ordinal++);q.setString(3,chunk.heading);q.setInt(4,chunk.start);q.setInt(5,chunk.end);q.setString(6,chunk.raw);try(var r=q.executeQuery()){r.next();chunkId=r.getLong(1);}
                     }
-                    String snip = rs.getString("snip");
-                    double bm25 = rs.getDouble("rank");
-                    double score = Math.max(0, 1.0 - bm25 / 20.0);
-                    hits.add(new KnowledgeStore.Hit(path, 1, snip == null ? "" : snip, score));
-                    if (hits.size() >= cap) {
-                        break;
-                    }
+                    try(var q=db.prepareStatement("INSERT INTO search_content VALUES(?,?,?,?)")){q.setLong(1,chunkId);q.setString(2,SearchTerms.index(title+" "+chunk.heading));q.setString(3,SearchTerms.index(aliases));q.setString(4,SearchTerms.index(chunk.raw));q.executeUpdate();}
                 }
+                try(var s=db.createStatement()){s.execute("COMMIT");}errors.remove(path);
+            }catch(Exception e){try(var s=db.createStatement()){s.execute("ROLLBACK");}throw e;}
+        }catch(Exception e){errors.put(path,Objects.toString(e.getMessage(),"Index failed"));throw failure(e);}
+    }
+    record Chunk(String heading,int start,int end,String raw) {}
+    static List<Chunk> chunks(String raw,int bodyLine){
+        String[] lines=raw.split("\\R",-1);List<Chunk> out=new ArrayList<>();StringBuilder body=new StringBuilder();
+        String heading="";int start=bodyLine,count=0;boolean fence=false;
+        for(int i=bodyLine-1;i<lines.length;i++){
+            String line=lines[i];boolean header=!fence&&line.matches("#{1,6} .*");
+            if(body.length()>0 && ((header&&count>=200)||(!fence&&count>=800&&line.isBlank())||count>=4000)){
+                out.add(new Chunk(heading,start,i,body.toString()));body.setLength(0);start=i+1;count=0;
             }
-            return List.copyOf(hits);
-        } catch (SQLException e) {
-            throw new UncheckedIOException(new IOException(e));
+            if(header)heading=line.replaceFirst("^#+\\s+","");
+            if(line.stripLeading().startsWith("```")||line.stripLeading().startsWith("~~~"))fence=!fence;
+            body.append(line).append('\n');count+=line.codePointCount(0,line.length())+1;
         }
-    }
-
-    @Override
-    public void close() {
-        try {
-            conn.close();
-        } catch (SQLException e) {
-            throw new UncheckedIOException(new IOException(e));
-        }
-    }
-
-    private void ensureSchema() throws SQLException {
-        if (SCHEMA_VERSION.equals(readSchemaVersion())) {
-            return;
-        }
-        try (Statement s = conn.createStatement()) {
-            s.executeUpdate("DROP TABLE IF EXISTS cards_fts");
-            s.executeUpdate("DROP TABLE IF EXISTS cards_meta");
-            s.executeUpdate("DROP TABLE IF EXISTS meta");
-            s.executeUpdate("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-            s.executeUpdate(
-                    """
-                    CREATE TABLE IF NOT EXISTS cards_meta (
-                      path TEXT PRIMARY KEY,
-                      mtime INTEGER NOT NULL,
-                      type TEXT, date TEXT, who TEXT, status TEXT
-                    )
-                    """);
-            s.executeUpdate(
-                    """
-                    CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
-                      path, title, aliases, body, type, who, date,
-                      tokenize = 'unicode61'
-                    )
-                    """);
-            s.executeUpdate("INSERT INTO meta(key, value) VALUES ('schema_version', '" + SCHEMA_VERSION + "')");
-        }
-    }
-
-    private String readSchemaVersion() {
-        try (Statement s = conn.createStatement();
-             ResultSet rs = s.executeQuery("SELECT value FROM meta WHERE key='schema_version'")) {
-            return rs.next() ? rs.getString(1) : null;
-        } catch (SQLException e) {
-            return null;
-        }
-    }
-
-    private Set<String> collectDiskPaths() throws IOException {
-        Set<String> paths = new LinkedHashSet<>();
-        Path memoryMd = workspace.resolve("MEMORY.md");
-        if (Files.isRegularFile(memoryMd)) {
-            paths.add("MEMORY.md");
-        }
-        Path memoryDir = workspace.resolve("memory");
-        if (Files.isDirectory(memoryDir)) {
-            try (var stream = Files.list(memoryDir)) {
-                stream.filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".md"))
-                        .forEach(p -> paths.add(rel(p)));
+        if(!body.isEmpty()||out.isEmpty())out.add(new Chunk(heading,start,lines.length,body.toString()));
+        List<Chunk> bounded=new ArrayList<>();
+        for(Chunk chunk:out){
+            int total=chunk.raw.codePointCount(0,chunk.raw.length());
+            if(total<=4000){bounded.add(chunk);continue;}
+            for(int offset=0;offset<total;offset+=900){
+                int from=chunk.raw.offsetByCodePoints(0,offset),to=chunk.raw.offsetByCodePoints(0,Math.min(total,offset+1000));
+                int first=chunk.start+(int)chunk.raw.substring(0,from).chars().filter(cp->cp=='\n').count();
+                int last=first+(int)chunk.raw.substring(from,to).chars().filter(cp->cp=='\n').count();
+                bounded.add(new Chunk(chunk.heading,first,last,chunk.raw.substring(from,to)));
+                if(offset+1000>=total)break;
             }
         }
-        Path knowledge = workspace.resolve("knowledge");
-        if (Files.isDirectory(knowledge)) {
-            try (var stream = Files.walk(knowledge)) {
-                stream.filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".md"))
-                        .forEach(p -> paths.add(rel(p)));
-            }
-        }
-        return paths;
+        return bounded;
     }
-
-    private Set<String> indexedPaths() throws SQLException {
-        Set<String> paths = new LinkedHashSet<>();
-        try (Statement s = conn.createStatement();
-             ResultSet rs = s.executeQuery("SELECT path FROM cards_meta")) {
-            while (rs.next()) {
-                paths.add(rs.getString(1));
-            }
-        }
-        return paths;
+    public synchronized void rebuild(){
+        check();try(var s=db.createStatement()){s.executeUpdate("DELETE FROM documents");errors.clear();invalidHashes.clear();building=true;}
+        catch(SQLException e){throw failure(e);}reconcile();
     }
-
-    private Long indexedMtime(String relativePath) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT mtime FROM cards_meta WHERE path=?")) {
-            ps.setString(1, relativePath);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getLong(1) : null;
-            }
-        }
+    public synchronized void delete(String path){check();try(var q=db.prepareStatement("DELETE FROM documents WHERE path=?")){q.setString(1,path);q.executeUpdate();errors.remove(path);invalidHashes.remove(path);}catch(SQLException e){throw failure(e);}}
+    public synchronized String pathFor(UUID uid){check();try(var q=db.prepareStatement("SELECT path FROM documents WHERE document_uid=?")){q.setString(1,uid.toString());try(var r=q.executeQuery()){if(!r.next())throw new StorageException(NOT_FOUND,"Article ID not indexed");return r.getString(1);}}catch(SQLException e){throw failure(e);}}
+    public synchronized List<KnowledgeStore.Hit> search(FindQuery query,int limit){return search(query,null,Set.of(),limit);}
+    public synchronized List<KnowledgeStore.Hit> search(FindQuery query,String kind,Set<String> tags,int limit){
+        check();truncated=false;int cap=Math.min(50,Math.max(0,limit));if(cap==0)return List.of();
+        String match=SearchTerms.match(String.join(" ",query.keywords()));boolean full=!match.isBlank();
+        if(!full&&query.fromInclusive()==null&&kind==null&&tags.isEmpty())return List.of();
+        StringBuilder sql=new StringBuilder("SELECT d.path,d.title,d.content_hash,d.document_uid,c.heading,c.start_line,c.end_line,c.raw_text,"+(full?"bm25(article_fts,8.0,5.0,1.0)":"0.0")+" AS rank FROM chunks c JOIN documents d ON d.id=c.document_id "+(full?"JOIN article_fts ON article_fts.rowid=c.id ":"")+"WHERE d.state='ready'");
+        List<Object> args=new ArrayList<>();if(full){sql.append(" AND article_fts MATCH ?");args.add(match);}
+        if(query.fromInclusive()!=null){sql.append(" AND d.event_date>=? AND d.event_date<=?");args.add(query.fromInclusive().toString());args.add(query.toInclusive().toString());}
+        if(kind!=null){sql.append(" AND d.kind=?");args.add(kind);}
+        for(String tag:tags){sql.append(" AND EXISTS(SELECT 1 FROM document_tags x WHERE x.document_id=d.id AND x.tag=?)");args.add(tag);}
+        sql.append(full?" ORDER BY rank,d.path,c.ordinal":" ORDER BY d.event_date DESC,d.path,c.ordinal");sql.append(" LIMIT 5001");
+        List<KnowledgeStore.Hit> hits=new ArrayList<>();Set<String> seen=new HashSet<>();
+        try(var p=db.prepareStatement(sql.toString())){
+            for(int i=0;i<args.size();i++)p.setObject(i+1,args.get(i));
+            try(var r=p.executeQuery()){int scanned=0;while(r.next()&&hits.size()<cap){
+                if(++scanned>5000){truncated=true;break;}
+                String path=r.getString("path");if(errors.containsKey(path)||!seen.add(path))continue;
+                String current;
+                try{current=files.readText(path);}catch(StorageException e){errors.put(path,e.getMessage());continue;}
+                if(!MarkdownDocumentStore.hash(current).equals(r.getString("content_hash"))){errors.put(path,"File changed; reindex pending");if(sync!=null)sync.changed(path);continue;}
+                String snippet=r.getString("raw_text").strip();int end=snippet.offsetByCodePoints(0,Math.min(240,snippet.codePointCount(0,snippet.length())));snippet=snippet.substring(0,end);
+                hits.add(new KnowledgeStore.Hit(path,r.getInt("start_line"),snippet,1.0,r.getString("content_hash"),r.getString("document_uid"),r.getDouble("rank")));
+            }}return List.copyOf(hits);
+        }catch(SQLException e){throw failure(e);}
     }
-
-    private List<KnowledgeStore.Hit> searchByDate(FindQuery query, int limit) {
-        List<KnowledgeStore.Hit> hits = new ArrayList<>();
-        try (Statement s = conn.createStatement();
-             ResultSet rs = s.executeQuery("SELECT path, date FROM cards_meta")) {
-            while (rs.next()) {
-                String path = rs.getString("path");
-                String date = rs.getString("date");
-                if (!passesDateOnly(path, date, query)) {
-                    continue;
-                }
-                hits.add(new KnowledgeStore.Hit(path, 1, "", 0.5));
-                if (hits.size() >= limit) {
-                    break;
-                }
-            }
-        } catch (SQLException e) {
-            throw new UncheckedIOException(new IOException(e));
-        }
-        return List.copyOf(hits);
-    }
-
-    private String metaDate(String path) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT date FROM cards_meta WHERE path=?")) {
-            ps.setString(1, path);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getString(1) : null;
-            }
-        }
-    }
-
-    private static String matchExpression(List<String> keywords) {
-        List<String> groups = new ArrayList<>();
-        for (String keyword : keywords) {
-            String ngrams = CjkNgrams.forQuery(keyword);
-            if (ngrams.isBlank()) {
-                continue;
-            }
-            String inner = String.join(" OR ", ngrams.split("\\s+"));
-            groups.add("(" + inner + ")");
-        }
-        return String.join(" AND ", groups);
-    }
-
-    private static boolean passesDate(String path, String metaDate, FindQuery query) {
-        if (query.fromInclusive() == null) {
-            return true;
-        }
-        String name = fileName(path);
-        if (name.matches("\\d{4}-\\d{2}-\\d{2}\\.md")) {
-            return query.matchesDailyFile(name);
-        }
-        if (metaDate != null && !metaDate.isBlank()) {
-            return dateInRange(metaDate, query);
-        }
-        return true;
-    }
-
-    private static boolean passesDateOnly(String path, String metaDate, FindQuery query) {
-        String name = fileName(path);
-        if (query.matchesDailyFile(name)) {
-            return true;
-        }
-        return metaDate != null && !metaDate.isBlank() && dateInRange(metaDate, query);
-    }
-
-    private static boolean dateInRange(String raw, FindQuery query) {
-        LocalDate date = parseDate(raw);
-        if (date == null) {
-            return false;
-        }
-        return !date.isBefore(query.fromInclusive()) && !date.isAfter(query.toInclusive());
-    }
-
-    private static LocalDate parseDate(String raw) {
-        String s = raw.strip();
-        if (s.length() >= 10 && s.substring(0, 10).matches("\\d{4}-\\d{2}-\\d{2}")) {
-            try {
-                return LocalDate.parse(s.substring(0, 10));
-            } catch (RuntimeException ignored) {
-                return null;
-            }
-        }
-        try {
-            return LocalDate.parse(s);
-        } catch (RuntimeException ignored) {
-            return null;
-        }
-    }
-
-    private Path resolve(String relativePath) {
-        if (relativePath == null || relativePath.isBlank()) {
-            return null;
-        }
-        String norm = relativePath.replace('\\', '/');
-        if (norm.contains("..") || norm.startsWith("/") || norm.contains(":")) {
-            return null;
-        }
-        Path resolved = workspace.resolve(norm).normalize();
-        if (!resolved.startsWith(workspace)) {
-            return null;
-        }
-        return resolved;
-    }
-
-    private String rel(Path path) {
-        return workspace.relativize(path).toString().replace('\\', '/');
-    }
-
-    private static String fileName(String relativePath) {
-        int slash = relativePath.lastIndexOf('/');
-        return slash < 0 ? relativePath : relativePath.substring(slash + 1);
+    @Override public void close(){
+        KnowledgeSyncService service; synchronized(this){if(closed)return;service=sync;sync=null;}
+        if(service!=null)service.close();
+        synchronized(this){closed=true;try{db.close();}catch(SQLException e){throw failure(e);}}
     }
 }

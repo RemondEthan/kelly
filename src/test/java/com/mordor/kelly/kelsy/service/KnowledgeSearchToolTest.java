@@ -38,15 +38,17 @@ class KnowledgeSearchToolTest {
 
     @Test
     void callAsyncSeesFileWrittenAfterWarmSearch() throws Exception {
-        Files.writeString(dir.resolve("MEMORY.md"), "- 张三：长期合作\n");
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- 张三：长期合作\n");
         try (var store = new KnowledgeStore(dir)) {
+            store.index().reconcile();
             store.search(FindQuery.parse("张三", java.time.LocalDate.of(2026, 9, 4)));
             Files.createDirectories(dir.resolve("knowledge/people"));
-            Files.writeString(dir.resolve("knowledge/people/李四.md"), "# 李四\n");
+            ArticleFixtures.writeString(dir.resolve("knowledge/people/李四.md"), "# 李四\n");
             var tool = new KnowledgeSearchTool(store);
             ToolCallParam param = ToolCallParam.builder()
                     .input(Map.of("query", "李四"))
                     .build();
+            store.index().reconcile();
             ToolResultBlock result = tool.callAsync(param).block();
             String text = ((TextBlock) result.getOutput().getFirst()).getText();
             assertTrue(text.contains("knowledge/people/李四.md"));
@@ -56,16 +58,18 @@ class KnowledgeSearchToolTest {
     @Test
     void callAsyncFormatsTopHits() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/people"));
-        Files.writeString(dir.resolve("knowledge/people/张三.md"),
+        ArticleFixtures.writeString(dir.resolve("knowledge/people/张三.md"),
                 """
                 # 张三
                 - 邮箱：zhangsan@example.com
                 """);
         try (var store = new KnowledgeStore(dir)) {
+            store.index().reconcile();
             var tool = new KnowledgeSearchTool(store);
             ToolCallParam param = ToolCallParam.builder()
                     .input(Map.of("query", "张三"))
                     .build();
+            store.index().reconcile();
             ToolResultBlock result = tool.callAsync(param).block();
             String text = ((TextBlock) result.getOutput().getFirst()).getText();
             assertTrue(text.contains("knowledge/people/张三.md"));

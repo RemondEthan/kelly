@@ -3,6 +3,7 @@ package com.mordor.kelly.ui.chat;
 import com.mordor.kelly.model.AppState;
 import com.mordor.kelly.ui.chat.font.ChatFontSettingsService;
 import com.mordor.kelly.ui.chat.font.FontSettingsDialog;
+import com.mordor.kelly.ui.theme.ThemeToggleButton;
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -21,7 +22,7 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
  *
  * <h3>布局结构（HBox 水平排列）</h3>
  * <pre>
- *   [用户名 🟢] --- [spacer 弹性空间] --- [知识库] [用户A ↔ 用户B] [字体图标]
+ *   [用户名 🟢] --- [spacer 弹性空间] --- [知识库] [用户A ↔ 用户B] [字体图标] [主题]
  * </pre>
  *
  * <h3>组件说明</h3>
@@ -30,6 +31,7 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
  *   <li><b>知识库按钮</b> - 仅在 Kelsy 助手启用时可见，点击切换知识库面板</li>
  *   <li><b>连接信息</b> - 显示 "用户A ↔ 用户B"，通过属性绑定实时更新</li>
  *   <li><b>字体按钮</b> - 点击打开字体设置对话框</li>
+ *   <li><b>主题按钮</b> - 点击在亮色 / 深色之间切换，选择会持久化</li>
  * </ul>
  *
  * <h3>JavaFX 属性绑定</h3>
@@ -99,5 +101,8 @@ public class ChatHeader extends HBox {
                         chatRoot,
                         fontService));
         getChildren().add(fontButton);
+
+        // 主题切换按钮：亮色 / 深色
+        getChildren().add(new ThemeToggleButton());
     }
 }

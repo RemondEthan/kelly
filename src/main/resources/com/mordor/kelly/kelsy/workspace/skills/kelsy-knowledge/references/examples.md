@@ -1,71 +1,8 @@
-# 归档与回忆例子
+# 示例
 
-用 `load_skill_through_path` 加载本文件。不要把本页写进 MEMORY.md。
-
-## 会议卡片：槽位不齐
-
-用户 `/note 会上讲了交付`（你收到的是改写后的澄清指令）。
-
-缺谁、结论、待办。只问缺的。此时不要 `memory_save`，不要写 `knowledge/meetings/`。
-
-## 会议卡片：齐了再落盘
-
-用户补全：客户 XX，结论「先申请再发货」，待办无。日期按当天 2026-09-04。
-
-写卡片 `knowledge/meetings/2026-09-04-客户XX-交付licence.md`，正文含：
-
-```
-- 结论：先申请再发货
-- 别名：licence, license, 许可证, 交付许可
-```
-
-`KNOWLEDGE.md` 加一行。`memory_save` 日记和 `MEMORY.md` 各一行，必须出现 `许可证`、`licence` 和卡片路径。
-
-回复点名这些路径。不要说「已经记下了」却不写路径。
-
-## 回忆：客户交付 licence 的会
-
-用户：「有一个关于客户交付 licence 的会议，当时结论是什么？」
-
-不要整句当一个词。先看已检索候选，不够再 knowledge_search。没给日期，不限制窗口。
-
-命中指针后 `read_file` 卡片。答：「先申请再发货」+ `来源：knowledge/meetings/2026-09-04-客户XX-交付licence.md`。
-
-另有一张不同客户的类似卡：两张都列出，让用户挑。
-
-两次检索都空：答「知识库没有这场会议的归档。」不要把 MEMORY.md 没有当成没归档。不要补一段像真的。
-
-## 普通一条（非会议）
-
-用户：「今天下午和张三把评审定在周五了。」
-
-不是会议门闩。`memory_save`：
-
-```
-- 2026-09-02 与张三敲定评审方案，周五评审
-```
-
-不要收成：`- 定了评审`。
-
-## 取消
-
-澄清中用户说「先不记了」：不写任何文件。
-
-## 会议待办拆成 todo 卡
-
-用户 `/note` 一场会，待办是「申请 licence；周五发周报」。缺截止：只问截止，不写任何文件。
-
-补全截止 2026-09-10、2026-09-12 后：先写会议卡，再写
-
-- `knowledge/todos/2026-09-10-申请-licence.md`（`状态：open`）
-- `knowledge/todos/2026-09-12-发周报.md`
-
-`KNOWLEDGE.md` 与 `memory_save` 带上会议路径和这两张 todo 路径。
-
-## 单独记一条待办
-
-用户：「记一条待办：周五交周报。」问截止日。齐了只写 `knowledge/todos/` 卡，带 `- 原文：记一条待办：周五交周报。`，不要只 `memory_save` 一行没有状态的摘要。
-
-## `/note` 回显
-
-会议卡片落盘后，回复例如：「已写入 `knowledge/meetings/2026-09-04-客户XX-交付licence.md`、`MEMORY.md` 与 `memory/2026-09-04.md`。」
+- “下周一提交报告”：确认本地日期后 todo_create(title="提交报告",dueDate="YYYY-MM-DD",descriptionMd="",priority=0)。
+- “还有哪些待办”：todo_list(status="open")，按 nextCursor 取后续页面，不能声称第一页是全部。
+- “完成这个任务”：todo_get(uid)，再 todo_complete(uid,expectedVersion)。
+- “记录评审决定”：槽位齐全后 knowledge_create(kind="decision",path="knowledge/decisions/主题.md",title=主题,bodyMarkdown=原文,aliases=[相关别名],tags=[])。
+- “许可证当时怎么定的”：knowledge_search(query="许可证")，knowledge_get(path=命中路径,expectedHash=命中哈希)。
+- 工具存储错误：如实说明暂时不可用，不能解释为用户没有任务/没有归档。

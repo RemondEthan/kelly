@@ -49,61 +49,21 @@ public final class TodoReminderService {
     /** 下午提醒时间点 */
     private static final LocalTime FOURTEEN = LocalTime.of(14, 0);
 
-    /** 知识库根目录 */
-    private final Path knowledgeRoot;
-
-    /** 提醒账本（记录已触发的时间槽，防止重复提醒） */
-    private final ReminderLedger ledger;
-
-    /**
-     * 创建提醒服务实例。
-     *
-     * @param knowledgeRoot 知识库根目录
-     */
-    public TodoReminderService(Path knowledgeRoot) {
-        this.knowledgeRoot = knowledgeRoot;
-        this.ledger = ReminderLedger.open(knowledgeRoot.resolve(".todo-reminder-ledger"));
+    private final TodoRepository repository;
+    private final boolean ownsRepository;
+    public TodoReminderService(Path knowledgeRoot) { this(new TodoRepository(knowledgeRoot), true); }
+    public TodoReminderService(TodoRepository repository) { this(repository, false); }
+    private TodoReminderService(TodoRepository repository, boolean ownsRepository) {
+        this.repository=repository; this.ownsRepository=ownsRepository;
     }
-
-    /**
-     * 评估当前是否需要触发提醒。
-     *
-     * @param now 当前时间
-     * @return 提醒批次（包含待办列表和触发的时间槽），无需提醒时返回 Optional.empty()
-     */
     public Optional<ReminderBatch> evaluate(LocalDateTime now) {
-        if (now == null) {
-            return Optional.empty();
-        }
-        LocalDate today = now.toLocalDate();
-        // 扫描所有待办，筛选在提醒窗口内的
-        List<TodoCard> window = new ArrayList<>();
-        for (TodoCard card : TodoScanner.list(knowledgeRoot)) {
-            if (TodoReminderPolicy.inWindow(card, today)) {
-                window.add(card);
-            }
-        }
-        window = TodoReminderPolicy.sort(window);
-        // 检查哪些时间槽已到期且未触发
-        EnumSet<ReminderSlot> due = slotsDue(now, ledger);
-        if (window.isEmpty() || due.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(new ReminderBatch(window, due));
+        if(now==null)return Optional.empty();
+        return repository.claim(now).map(p->new ReminderBatch(p.todos(),p.slots(),p.uid()));
     }
-
-    /**
-     * 提交提醒批次：标记时间槽已触发，防止重复提醒。
-     *
-     * @param batch 提醒批次
-     * @param today 当前日期
-     */
     public void commit(ReminderBatch batch, LocalDate today) {
-        if (batch == null || today == null) {
-            return;
-        }
-        ledger.mark(today, batch.slots());
+        if(batch!=null && batch.uid()!=null)repository.acknowledge(batch.uid());
     }
+    public void close() { if(ownsRepository)repository.close(); }
 
     /**
      * 计算下次提醒时间。
@@ -123,26 +83,4 @@ public final class TodoReminderService {
         return LocalDateTime.of(day.plusDays(1), TEN);
     }
 
-    /**
-     * 检查哪些时间槽已到期且未触发。
-     *
-     * @param now   当前时间
-     * @param ledger 提醒账本
-     * @return 已到期的时间槽集合
-     */
-    static EnumSet<ReminderSlot> slotsDue(LocalDateTime now, ReminderLedger ledger) {
-        EnumSet<ReminderSlot> due = EnumSet.noneOf(ReminderSlot.class);
-        LocalDate today = now.toLocalDate();
-        LocalTime time = now.toLocalTime();
-        if (!ledger.fired(today, ReminderSlot.LOGIN)) {
-            due.add(ReminderSlot.LOGIN);
-        }
-        if (!time.isBefore(TEN) && !ledger.fired(today, ReminderSlot.TEN)) {
-            due.add(ReminderSlot.TEN);
-        }
-        if (!time.isBefore(FOURTEEN) && !ledger.fired(today, ReminderSlot.FOURTEEN)) {
-            due.add(ReminderSlot.FOURTEEN);
-        }
-        return due;
-    }
 }

@@ -133,6 +133,10 @@ public class ChatPane extends StackPane {
      * {@code setMouseTransparent(true)} 让背景图不接收鼠标事件，
      * 事件会穿透到下层的 UI 组件。</p>
      *
+     * <p>背景图之上还叠了一层「压暗层」（{@code wallpaper-dim}）：
+     * 亮色模式下完全透明，深色模式下由 dark.css 打开半透明黑层，
+     * 避免浅蓝雪花图在深色界面里过于刺眼。</p>
+     *
      * @return 配置好背景图的 Region
      */
     private static Region wallpaper() {
@@ -154,7 +158,16 @@ public class ChatPane extends StackPane {
                 BackgroundPosition.CENTER,
                 new BackgroundSize(BackgroundSize.AUTO, BackgroundSize.AUTO,
                         false, false, false, true))));
-        return wallpaper;
+
+        // 压暗层：亮色模式透明，深色模式半透明黑
+        Region dim = new Region();
+        dim.getStyleClass().add("wallpaper-dim");
+        dim.setMouseTransparent(true);
+        dim.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
+        StackPane stack = new StackPane(wallpaper, dim);
+        stack.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        return stack;
     }
 
     /**
@@ -193,7 +206,7 @@ public class ChatPane extends StackPane {
             controller.setOnOpenKnowledge(knowledge::open);
             controller.setOnRefreshKnowledge(knowledge::refresh);
             // 启动待办提醒服务
-            controller.startReminders(new TodoReminderService(store.workspace()));
+            controller.startReminders(new TodoReminderService(store.todos()));
         }
 
         // 知识库可见时用 SplitPane 分割显示

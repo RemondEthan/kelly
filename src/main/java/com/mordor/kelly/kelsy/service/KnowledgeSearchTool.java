@@ -50,25 +50,27 @@ public final class KnowledgeSearchTool implements AgentTool {
 
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
-        String query = queryOf(param);
-        List<KnowledgeStore.Hit> hits = store.search(FindQuery.parse(query, LocalDate.now()), true);
-        int n = Math.min(MAX_RESULTS, hits.size());
-        if (n == 0) {
-            return Mono.just(ToolResultBlock.text("No matches."));
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < n; i++) {
-            KnowledgeStore.Hit hit = hits.get(i);
-            if (i > 0) {
-                sb.append('\n');
+        return Mono.fromCallable(() -> {
+            try {
+                String query = queryOf(param);
+                List<KnowledgeStore.Hit> hits = store.search(FindQuery.parse(query, LocalDate.now()));
+                var status = store.index().status();
+                var data = new LinkedHashMap<String,Object>();
+                data.put("hits", hits.stream().limit(MAX_RESULTS).map(h -> Map.of(
+                    "path",h.relativePath(),"uid",h.documentUid(),"citation",h.relativePath().startsWith("knowledge/")?"article:"+h.documentUid():h.relativePath(),"hash",h.contentHash(),
+                    "line",h.line(),"snippet",h.snippet(),"rank",h.rank())).toList());
+                data.put("indexState",status.state());
+                // File-level maintenance diagnostics must not drive destructive agent repairs.
+                data.put("unindexedFileCount",status.errors().keySet().stream().filter(p -> !p.equals("<scan>")).count());
+                if(!status.errors().isEmpty())data.put("maintenanceNote",
+                    "部分文件未索引，其他检索结果仍可用。格式问题需在维护流程中处理，不要自动修复、删除文件或反复重试检索。");
+                data.put("lastReconciledAt",status.lastReconciledAt()==null?null:status.lastReconciledAt().toString());
+                data.put("truncated",store.index().truncated());
+                return ToolResultBlock.text(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of("ok",true,"data",data)));
+            } catch (Exception e) {
+                return ToolResultBlock.text(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of("ok",false,"error",Map.of("code","INDEX_UNAVAILABLE","message",java.util.Objects.toString(e.getMessage(),"Search unavailable"),"retryable",true))));
             }
-            sb.append(hit.relativePath())
-                    .append("  ")
-                    .append(hit.snippet())
-                    .append("  ")
-                    .append(String.format(Locale.ROOT, "%.2f", hit.score()));
-        }
-        return Mono.just(ToolResultBlock.text(sb.toString()));
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     private static String queryOf(ToolCallParam param) {

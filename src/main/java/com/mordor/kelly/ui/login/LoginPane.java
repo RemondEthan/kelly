@@ -7,6 +7,7 @@ import com.mordor.kelly.service.AvatarService;
 import com.mordor.kelly.service.ImClient;
 import com.mordor.kelly.service.SaveLastLoginService;
 import com.mordor.kelly.ui.AvatarView;
+import com.mordor.kelly.ui.theme.ThemeToggleButton;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -35,22 +36,23 @@ import java.util.function.Consumer;
  *
  * <h3>布局结构</h3>
  * <pre>
- *   VBox (本类, login-root, 填满窗口)
- *   └── VBox (card, 白色卡片, 居中)
- *       ├── Region (弹性顶部)
- *       ├── HBox (logoRow, 应用 Logo)
- *       ├── VBox (fields, 表单字段)
- *       │   ├── Label (错误提示)
- *       │   ├── Label (信息提示)
- *       │   ├── HBox: IP + Port
- *       │   ├── VBox: IM_CODE
- *       │   ├── VBox: 初始口令
- *       │   ├── HBox: 头像选择 + 用户名
- *       │   └── HBox: 工作区路径 + 浏览按钮
- *       ├── CheckBox "脱机登录"
- *       ├── Button "⚙ 接入大模型"
- *       ├── Button "连 接"
- *       └── Region (弹性底部)
+ *   StackPane (本类, login-root, 填满窗口)
+ *   ├── VBox (card, 白色卡片, 居中)
+ *   │   ├── Region (弹性顶部)
+ *   │   ├── HBox (logoRow, 应用 Logo)
+ *   │   ├── VBox (fields, 表单字段)
+ *   │   │   ├── Label (错误提示)
+ *   │   │   ├── Label (信息提示)
+ *   │   │   ├── HBox: IP + Port
+ *   │   │   ├── VBox: IM_CODE
+ *   │   │   ├── VBox: 初始口令
+ *   │   │   ├── HBox: 头像选择 + 用户名
+ *   │   │   └── HBox: 工作区路径 + 浏览按钮
+ *   │   ├── CheckBox "脱机登录"
+ *   │   ├── Button "⚙ 接入大模型"
+ *   │   ├── Button "连 接"
+ *   │   └── Region (弹性底部)
+ *   └── Button (theme-toggle, 右上角主题切换)
  * </pre>
  *
  * <h3>职责分离</h3>
@@ -60,7 +62,7 @@ import java.util.function.Consumer;
  * <p>勾选"脱机登录"后，IP/端口/IM_CODE/口令字段禁用，
  * 只保留用户名，进入本地与 Kelsy 助手对话的模式。</p>
  */
-public class LoginPane extends VBox {
+public class LoginPane extends StackPane {
 
     /** 服务器 IP 输入框 */
     private final TextField serverIp = new TextField();
@@ -98,7 +100,7 @@ public class LoginPane extends VBox {
     private StackPane avatarSlot;
 
     public LoginPane(Consumer<AppState> onConnect) {
-        super(0);
+        super();
         this.controller = new LoginController(new SaveLastLoginService());
         this.onConnect = onConnect;
 
@@ -107,8 +109,8 @@ public class LoginPane extends VBox {
                 LoginPane.class.getResource("login.css").toExternalForm());
 
         setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
-        setFillWidth(true);
-        setPadding(new Insets(38, 66, 38, 66));
+        // 卡片用 margin 留边距，主题按钮才能贴到窗口右上角
+        setPadding(new Insets(0));
 
         errorLabel.getStyleClass().add("login-error");
         errorLabel.setVisible(false);
@@ -177,9 +179,13 @@ public class LoginPane extends VBox {
         card.getStyleClass().add("login-card");
         card.setMaxWidth(Double.MAX_VALUE);
         card.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(card, Priority.ALWAYS);
 
-        getChildren().add(card);
+        // 主题切换按钮：贴在窗口右上角
+        ThemeToggleButton themeToggle = new ThemeToggleButton();
+        getChildren().addAll(card, themeToggle);
+        StackPane.setAlignment(themeToggle, Pos.TOP_RIGHT);
+        StackPane.setMargin(card, new Insets(38, 66, 38, 66));
+        StackPane.setMargin(themeToggle, new Insets(12, 14, 0, 0));
 
         LoginController.Prefilled p = controller.prefill();
         serverIp.setText(p.ip());

@@ -20,12 +20,13 @@ class AskGroundingTest {
     @Test
     void attachesPersonCardForNamedAsk() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/people"));
-        Files.writeString(dir.resolve("knowledge/people/张三.md"),
+        ArticleFixtures.writeString(dir.resolve("knowledge/people/张三.md"),
                 """
                 # 张三
                 - 邮箱：zhangsan@example.com
                 """);
         try (var store = new KnowledgeStore(dir)) {
+            store.index().reconcile();
             var grounding = AskGrounding.prepare(store, "张三邮箱是什么", LocalDate.of(2026, 9, 15));
             assertTrue(grounding.searched());
             assertTrue(grounding.attached().stream()
@@ -49,8 +50,9 @@ class AskGroundingTest {
 
     @Test
     void doesNotAttachMemoryMdAsCandidate() throws Exception {
-        Files.writeString(dir.resolve("MEMORY.md"), "- 喜欢深色主题\n");
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- 喜欢深色主题\n");
         try (var store = new KnowledgeStore(dir)) {
+            store.index().reconcile();
             var grounding = AskGrounding.prepare(store, "喜欢什么主题", LocalDate.of(2026, 9, 15));
             assertTrue(grounding.searched());
             assertTrue(grounding.attached().stream().noneMatch(h -> "MEMORY.md".equals(h.relativePath())));
@@ -62,8 +64,9 @@ class AskGroundingTest {
     @Test
     void greetingSkipsSearch() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/people"));
-        Files.writeString(dir.resolve("knowledge/people/张三.md"), "# 张三\n");
+        ArticleFixtures.writeString(dir.resolve("knowledge/people/张三.md"), "# 张三\n");
         try (var store = new KnowledgeStore(dir)) {
+            store.index().reconcile();
             var grounding = AskGrounding.prepare(store, "你好", LocalDate.of(2026, 9, 15));
             assertFalse(grounding.searched());
             assertTrue(grounding.attached().isEmpty());

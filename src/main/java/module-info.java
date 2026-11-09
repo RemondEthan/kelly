@@ -45,6 +45,7 @@ module com.mordor.kelly {
     requires java.desktop;      // AWT/Swing：SystemTray 托盘图标、Taskbar 任务栏、Desktop 事件
     requires java.prefs;        // Java Preferences API：持久化登录配置、字体设置等用户偏好
     requires java.net.http;     // JDK 11+ HTTP 客户端：WebSocket 通信（ImClient 使用）
+    requires org.yaml.snakeyaml;
     requires java.sql;          // JDBC：KnowledgeIndex 打开 sqlite-jdbc
 
     // ─── 序列化 ──────────────────────────────────────────────
@@ -82,9 +83,12 @@ module com.mordor.kelly {
     requires org.freedesktop.dbus.transport.jre; // dbus-java 本机 UnixSocket 传输
 
     // ─── 导出包（供其他模块或反射访问）────────────────────
+    exports com.mordor.kelly.kelsy.storage;
+    exports com.mordor.kelly.kelsy.todo;
     exports com.mordor.kelly.app;       // 应用入口、托盘、快捷键、退出管理
     exports com.mordor.kelly.ui.login;  // 登录界面
     exports com.mordor.kelly.ui.chat;   // 聊天界面
+    exports com.mordor.kelly.ui.theme;  // 主题（亮色 / 深色）
     exports com.mordor.kelly.model;     // 数据模型（Message, AppState 等）
     exports com.mordor.kelly.service;   // 服务层（ImClient, CryptoService 等）
     exports com.mordor.kelly.common;    // 通用工具（Diagnostics 日志）

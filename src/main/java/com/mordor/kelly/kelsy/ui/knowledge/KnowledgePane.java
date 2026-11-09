@@ -57,6 +57,8 @@ public final class KnowledgePane extends BorderPane {
 
     /** 当前正在预览的文件路径 */
     private String currentPath;
+    private long openGeneration;
+    private long sourcesGeneration;
 
     /**
      * 创建知识库面板。
@@ -89,6 +91,7 @@ public final class KnowledgePane extends BorderPane {
      * @param paths 引用的文件路径列表
      */
     public void setSources(List<String> paths) {
+        long generation = ++sourcesGeneration;
         sourcePaths = paths == null ? List.of() : List.copyOf(paths);
         sources.getChildren().clear();
         for (String path : sourcePaths) {
@@ -99,6 +102,13 @@ public final class KnowledgePane extends BorderPane {
             }
             link.setOnAction(e -> open(path));
             sources.getChildren().add(link);
+            if (path.startsWith("todo:")) {
+                link.setText("待办事项");
+                java.util.concurrent.CompletableFuture.supplyAsync(() -> todoLabel(path))
+                        .thenAccept(title -> javafx.application.Platform.runLater(() -> {
+                            if (generation == sourcesGeneration) link.setText(title);
+                        }));
+            }
         }
         // 检查 MEMORY.md 大小，超过阈值时触发警告
         memoryWarn.set(store.memoryBytes() > KnowledgeStore.MEMORY_WARN_BYTES);
@@ -126,7 +136,18 @@ public final class KnowledgePane extends BorderPane {
             return;
         }
         currentPath = relativePath;
-        KnowledgeStore.Read read = store.read(relativePath);
+        long generation=++openGeneration;
+        if(javafx.application.Platform.isFxApplicationThread()) {
+            host.setContent(new Label("正在读取…"));
+            java.util.concurrent.CompletableFuture.supplyAsync(() -> store.read(relativePath))
+                .whenComplete((read,error) -> javafx.application.Platform.runLater(() -> {
+                    if(generation!=openGeneration)return;
+                    render(relativePath,error==null?read:new KnowledgeStore.Read.Rejected(error.getMessage()));
+                }));
+        } else render(relativePath,store.read(relativePath));
+    }
+
+    private void render(String relativePath,KnowledgeStore.Read read) {
         Diagnostics.warn("cite", "open %s -> %s @ %s", relativePath, read.getClass().getSimpleName(),
                 store.workspace());
         switch (read) {
@@ -152,6 +173,7 @@ public final class KnowledgePane extends BorderPane {
      * 显示空状态提示。
      */
     private void showEmpty() {
+        openGeneration++;
         currentPath = null;
         host.setContent(new Label("本轮没有引用原文"));
     }
@@ -162,5 +184,15 @@ public final class KnowledgePane extends BorderPane {
     private static String shortName(String path) {
         int slash = path.lastIndexOf('/');
         return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    /** Resolve task titles off the UI thread; keep the opaque reference for navigation. */
+    private String todoLabel(String reference) {
+        try {
+            String title = store.todos().get(java.util.UUID.fromString(reference.substring(5))).title();
+            return title == null || title.isBlank() ? "待办事项" : title;
+        } catch (RuntimeException e) {
+            return "待办事项（不可用）";
+        }
     }
 }

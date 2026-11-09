@@ -9,6 +9,7 @@ import io.agentscope.core.tool.Toolkit;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDate;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -74,10 +75,40 @@ final class IndexingAgentTool implements AgentTool {
 
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+        Map<String, Object> input = param == null ? null : param.getInput();
+        if (!"memory_save".equals(inner.getName()) && input != null) {
+            // Check every supported alias, so conflicting parameters cannot bypass the guard.
+            for (String key : List.of("path", "file_path", "file")) {
+                Object value = input.get(key);
+                if (value == null || value.toString().isBlank()) continue;
+                try {
+                    Path resolved = new MarkdownDocumentStore(store.workspace()).safe(normalize(value.toString()));
+                    String relative = store.workspace().relativize(resolved).toString()
+                            .replace('\\', '/').toLowerCase(Locale.ROOT);
+                    boolean internal = java.util.Arrays.stream(relative.split("/"))
+                            .anyMatch(part -> part.startsWith(".kelly-"));
+                    if (internal) {
+                        return Mono.just(ToolResultBlock.text("{\"ok\":false,\"error\":{\"code\":\"PATH_REJECTED\",\"message\":\"Internal storage files cannot be edited by file tools\"}}"));
+                    }
+                    if (relative.equals("memory.md") || relative.startsWith("memory/") || relative.startsWith("knowledge/")) {
+                        return Mono.just(ToolResultBlock.text("{\"ok\":false,\"error\":{\"code\":\"INVALID_ARGUMENT\",\"message\":\"Use knowledge_create/update, todo_* or memory_save for managed content\"}}"));
+                    }
+                } catch (RuntimeException e) {
+                    return Mono.just(ToolResultBlock.text("{\"ok\":false,\"error\":{\"code\":\"PATH_REJECTED\",\"message\":\"Rejected unsafe managed file write\"}}"));
+                }
+            }
+        }
         return inner.callAsync(param).doOnSuccess(ignored -> indexAfter(param));
     }
 
     private void indexAfter(ToolCallParam param) {
+        if ("memory_save".equals(inner.getName()) && store.memoryBytes()>MemoryCompactor.LIMIT_BYTES) {
+            try {
+                var result=MemoryCompactor.compact(java.nio.file.Files.readString(store.workspace().resolve("MEMORY.md")),LocalDate.now());
+                MemoryCompactor.apply(store.workspace(),result);
+                for(var card:result.inboxCards()) store.upsert(card.relativePath());
+            } catch(Exception e) { Diagnostics.warn("kelsy","Memory compaction failed: %s",e.getMessage()); }
+        }
         Map<String, Object> input = param == null ? Map.of() : param.getInput();
         for (String path : pathsToIndex(inner.getName(), input)) {
             try {

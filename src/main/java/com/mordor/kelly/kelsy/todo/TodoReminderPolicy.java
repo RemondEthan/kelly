@@ -46,7 +46,7 @@ public final class TodoReminderPolicy {
      * @return true 如果在提醒窗口内
      */
     public static boolean inWindow(TodoCard card, LocalDate today) {
-        if (card == null || today == null || card.status() != TodoStatus.OPEN) {
+        if (card == null || today == null || card.due() == null || card.status() != TodoStatus.OPEN) {
             return false;
         }
         return !today.isBefore(card.due().minusDays(LEAD_DAYS));
@@ -72,6 +72,6 @@ public final class TodoReminderPolicy {
      * @return true 如果今天在截止日期之后
      */
     public static boolean overdue(TodoCard card, LocalDate today) {
-        return card != null && today != null && today.isAfter(card.due());
+        return card != null && card.due() != null && today != null && today.isAfter(card.due());
     }
 }

@@ -6,6 +6,7 @@ import com.mordor.kelly.model.AppState;
 import com.mordor.kelly.service.ImClient;
 import com.mordor.kelly.ui.chat.ChatPane;
 import com.mordor.kelly.ui.login.LoginPane;
+import com.mordor.kelly.ui.theme.ThemeService;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -39,8 +40,13 @@ public class Kelly extends Application {
 
     /** 窗口默认宽度（像素） */
     private static final double WIDTH = 720;
-    /** 窗口默认高度（像素） */
-    private static final double HEIGHT = 520;
+    /**
+     * 窗口默认高度（像素）。
+     *
+     * <p>登录卡片的内容高度约 580px，加上上下各 38px 的留白刚好放得下，
+     * 高度给小了卡片底部（连接按钮）会被裁掉。</p>
+     */
+    private static final double HEIGHT = 680;
 
     /** JavaFX 主窗口，应用生命周期内只有一个实例 */
     private Stage stage;
@@ -66,6 +72,8 @@ public class Kelly extends Application {
         this.stage = stage;
         this.root = new StackPane();
         root.getStyleClass().add("app-bg");
+        // 主题：装载色板样式表，并应用上次选择的主题（亮色 / 深色）
+        ThemeService.apply(root, new ThemeService().load());
 
         // 预加载 Ikonli Material Design 字体，避免 Windows 上字体加载失败导致图标乱码
         Font.loadFont(getClass().getResourceAsStream(

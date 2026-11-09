@@ -196,7 +196,12 @@ public class MessageBubble extends HBox {
             view.setImage(new Image(shown.toUri().toString(), true));  // 异步加载
         }
         // 点击图片打开查看器
-        view.setOnMouseClicked(e -> ImageViewer.show(previewFile, originalFile));
+        view.setOnMouseClicked(e -> {
+            if (e.getButton() == javafx.scene.input.MouseButton.PRIMARY && e.getClickCount() == 1) {
+                ImageViewer.show(previewFile, originalFile, view.getScene() == null ? null : view.getScene().getWindow());
+                e.consume();
+            }
+        });
         box.getChildren().add(view);
 
         // 如果有文字说明（图片消息的 caption），在图片下方显示

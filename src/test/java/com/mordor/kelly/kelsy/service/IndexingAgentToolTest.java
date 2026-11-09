@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class IndexingAgentToolTest {
 
@@ -20,7 +20,7 @@ class IndexingAgentToolTest {
     Path dir;
 
     @Test
-    void writeFileUpsertsWithoutWaitingForTtl() throws Exception {
+    void managedArticleWriteRequiresKnowledgeTool() throws Exception {
         Files.writeString(dir.resolve("MEMORY.md"), "- 张三\n");
         var today = LocalDate.of(2026, 9, 4);
         try (var store = new KnowledgeStore(dir)) {
@@ -41,8 +41,8 @@ class IndexingAgentToolTest {
                             .build())
                     .block();
             var hits = store.search(FindQuery.parse("李四", today));
-            assertTrue(hits.stream().anyMatch(h ->
-                    h.relativePath().equals("knowledge/people/李四.md")));
+            assertTrue(Files.notExists(card));
+            assertTrue(hits.isEmpty());
         }
     }
 
@@ -71,6 +71,52 @@ class IndexingAgentToolTest {
             var hits = store.search(FindQuery.parse("深色主题", today));
             assertTrue(hits.stream().anyMatch(h -> "MEMORY.md".equals(h.relativePath())));
             assertTrue(hits.stream().anyMatch(h -> diary.equals(h.relativePath())));
+        }
+    }
+
+    @Test
+    void fileToolsCannotReachInternalStorageThroughAnyPathAlias() throws Exception {
+        try (var store = new KnowledgeStore(dir)) {
+            byte[] database = Files.readAllBytes(dir.resolve(".kelly-data.db"));
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            for (String tool : java.util.List.of("write_file", "edit_file")) {
+                var guarded = new IndexingAgentTool(stub(tool, param -> {
+                    calls.incrementAndGet();
+                    return ToolResultBlock.text("Delegated");
+                }), store);
+                for (String key : java.util.List.of("path", "file_path", "file")) {
+                    for (String path : java.util.List.of(
+                            ".kelly-data.db", ".kelly-data.db-wal", ".kelly-data.db-shm",
+                            ".kelly-data.db-journal", ".kelly-index.db", ".kelly-index.db-wal",
+                            "./.kelly-data.db", ".//.kelly-data.db", ".KELLY-DATA.DB",
+                            "sub/.kelly-data.db", ".kelly-data.db.damaged-backup")) {
+                        var result = guarded.callAsync(ToolCallParam.builder()
+                                .input(Map.of(key, path)).build()).block();
+                        String text = ((io.agentscope.core.message.TextBlock) result.getOutput().getFirst()).getText();
+                        assertTrue(text.contains("PATH_REJECTED"), tool + " " + key + " " + path);
+                        assertEquals(0, calls.get(), "Rejected writes must not reach the underlying tool");
+                    }
+                }
+                guarded.callAsync(ToolCallParam.builder()
+                        .input(Map.of("path", "notes.txt", "file_path", ".kelly-data.db")).build()).block();
+                assertEquals(0, calls.get());
+            }
+            assertArrayEquals(database, Files.readAllBytes(dir.resolve(".kelly-data.db")));
+            assertTrue(store.todos().list(com.mordor.kelly.kelsy.todo.TodoRepository.Query.open()).items().isEmpty());
+        }
+    }
+
+    @Test
+    void ordinaryFilesStillReachTheUnderlyingTool() {
+        try (var store = new KnowledgeStore(dir)) {
+            var calls = new java.util.concurrent.atomic.AtomicInteger();
+            for (String tool : java.util.List.of("write_file", "edit_file")) {
+                new IndexingAgentTool(stub(tool, param -> {
+                    calls.incrementAndGet();
+                    return ToolResultBlock.text("Delegated");
+                }), store).callAsync(ToolCallParam.builder().input(Map.of("path", "notes.txt")).build()).block();
+            }
+            assertEquals(2, calls.get());
         }
     }
 

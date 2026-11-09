@@ -1,5 +1,8 @@
 /* ========================================================================
    CHAT PANE
+   --------------------------------------------------------------------
+   颜色全部引用主题色板（ui/theme/theme.css），深色模式下由
+   ui/theme/dark.css 统一换色，本文件无需改动。
    ======================================================================== */
 
 .chat-root,
@@ -9,18 +12,18 @@
 
 /* Title bar：半透明，让整窗背景图透到顶部 */
 .header {
-    -fx-background-color: rgba(255, 255, 255, 0.38);
-    -fx-border-color: transparent transparent rgba(228, 231, 237, 0.65) transparent;
+    -fx-background-color: -color-header-bg;
+    -fx-border-color: transparent transparent -color-border-glass transparent;
     -fx-border-width: 0 0 1 0;
 }
 
 .header-title {
-    -fx-text-fill: #1565C0;
+    -fx-text-fill: -color-link;
     -fx-font-weight: bold;
 }
 
 .header-meta {
-    -fx-text-fill: #909399;
+    -fx-text-fill: -color-text-secondary;
 }
 
 /* 背景铺在 ChatPane 的 StackPane 底层，列表必须透明才能露出来 */
@@ -46,67 +49,80 @@
     -fx-background-color: transparent;
 }
 
+/* 背景图上的压暗层：亮色模式完全透明，深色模式由 dark.css 打开 */
+.wallpaper-dim {
+    -fx-background-color: transparent;
+}
+
+/* 表情选择弹窗：自带独立 Scene，单独挂色板 */
+.emoji-popup {
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-border;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}
+
 /* Message bubbles. background-radius order:
    topLeft, topRight, bottomRight, bottomLeft. */
 .bubble-self {
-    -fx-background-color: #D6E6FF;
+    -fx-background-color: -color-bubble-self;
     -fx-background-radius: 12 12 0 12;
     -fx-padding: 6 10 6 10;
-    -fx-text-fill: #212121;
+    -fx-text-fill: -color-text-primary;
 }
 .bubble-self .text {
-    -fx-fill: #212121;
+    -fx-fill: -color-text-primary;
 }
 
 .bubble-peer {
-    -fx-background-color: #E8F4FF;
+    -fx-background-color: -color-bubble-peer;
     -fx-background-radius: 12 12 12 0;
     -fx-padding: 6 10 6 10;
-    -fx-text-fill: #212121;
+    -fx-text-fill: -color-text-primary;
 }
 .bubble-peer .text {
-    -fx-fill: #212121;
+    -fx-fill: -color-text-primary;
 }
 
 .todo-reminder .label,
 .todo-reminder .text {
-    -fx-text-fill: #1A2A3A;
-    -fx-fill: #1A2A3A;
+    -fx-text-fill: -color-text-strong;
+    -fx-fill: -color-text-strong;
 }
 .todo-reminder-item {
-    -fx-background-color: #9FC4E8;
+    -fx-background-color: -color-todo-item;
     -fx-background-radius: 8;
     -fx-padding: 6 8 6 8;
-    -fx-text-fill: #1A2A3A;
+    -fx-text-fill: -color-text-strong;
 }
 .todo-reminder-item .label,
 .todo-reminder-item .text {
-    -fx-text-fill: #1A2A3A;
-    -fx-fill: #1A2A3A;
+    -fx-text-fill: -color-text-strong;
+    -fx-fill: -color-text-strong;
 }
 .todo-reminder-item .hyperlink {
-    -fx-text-fill: #0D47A1;
+    -fx-text-fill: -color-link-strong;
 }
 .todo-reminder-due {
-    -fx-text-fill: #3D4F66;
+    -fx-text-fill: -color-text-due;
 }
 .todo-reminder-due .text {
-    -fx-fill: #3D4F66;
+    -fx-fill: -color-text-due;
 }
 
 .bubble-system {
-    -fx-background-color: #EFF6FF;
+    -fx-background-color: -color-bubble-system;
     -fx-background-radius: 8 8 8 8;
     -fx-padding: 4 10 4 10;
-    -fx-text-fill: #909399;
+    -fx-text-fill: -color-text-secondary;
     -fx-alignment: center;
 }
 .bubble-system .text {
-    -fx-fill: #909399;
+    -fx-fill: -color-text-secondary;
 }
 
 .bubble-name {
-    -fx-text-fill: #5C6370;
+    -fx-text-fill: -color-text-muted;
     -fx-wrap-text: false;
 }
 
@@ -114,28 +130,28 @@
     -fx-alignment: center;
 }
 .avatar-fallback {
-    -fx-fill: #8BB6FF;
+    -fx-fill: -color-avatar;
 }
 .avatar-fallback-self {
-    -fx-fill: #1E6FFF;
+    -fx-fill: -color-avatar-self;
 }
 .avatar-initial {
-    -fx-text-fill: white;
+    -fx-text-fill: -color-text-inverse;
     -fx-font-weight: 600;
 }
 .avatar-placeholder {
-    -fx-text-fill: white;
+    -fx-text-fill: -color-text-inverse;
     -fx-font-weight: 600;
 }
 
 .bubble-time {
-    -fx-text-fill: #B4BCCC;
+    -fx-text-fill: -color-text-time;
 }
 
 /* 左侧成员列表 */
 .member-list {
-    -fx-background-color: rgba(255, 255, 255, 0.48);
-    -fx-border-color: transparent rgba(228, 231, 237, 0.7) transparent transparent;
+    -fx-background-color: -color-member-bg;
+    -fx-border-color: transparent -color-border-glass transparent transparent;
     -fx-border-width: 0 1 0 0;
 }
 .member-list-heading {
@@ -143,17 +159,17 @@
 }
 .member-list-title {
     -fx-font-weight: bold;
-    -fx-text-fill: #1565C0;
+    -fx-text-fill: -color-link;
 }
 .member-list-toggle {
-    -fx-icon-color: #1565C0;
+    -fx-icon-color: -color-link;
     -fx-icon-size: 16px;
 }
 .member-list-collapsed {
     -fx-padding: 10 6 10 6;
 }
 .member-list-count {
-    -fx-text-fill: #909399;
+    -fx-text-fill: -color-text-secondary;
 }
 .member-list-scroll {
     -fx-background-color: transparent;
@@ -167,27 +183,27 @@
     -fx-padding: 2 2 4 2;
 }
 .member-name {
-    -fx-text-fill: #5C6370;
+    -fx-text-fill: -color-text-muted;
     -fx-wrap-text: false;
 }
 .member-list-add-kelsy, .member-list-remove-kelsy {
     -fx-padding: 1 4 1 4;
     -fx-background-color: transparent;
-    -fx-text-fill: #1565C0;
+    -fx-text-fill: -color-link;
     -fx-cursor: hand;
-    -fx-border-color: #90CAF9;
+    -fx-border-color: -color-selection;
     -fx-border-radius: 3;
     -fx-background-radius: 3;
     -fx-min-width: 0;
 }
 .member-list-add-kelsy:hover, .member-list-remove-kelsy:hover {
-    -fx-background-color: #E8F4FF;
+    -fx-background-color: -color-primary-soft;
 }
 
 /* Input bar */
 .input-bar {
-    -fx-background-color: rgba(255, 255, 255, 0.72);
-    -fx-border-color: rgba(228, 231, 237, 0.75) transparent transparent transparent;
+    -fx-background-color: -color-input-bg;
+    -fx-border-color: -color-border-glass transparent transparent transparent;
     -fx-border-width: 1 0 0 0;
     -fx-padding: 8 10 8 10;
 }
@@ -198,7 +214,7 @@
 }
 
 .input-bar .button:hover {
-    -fx-background-color: #E8F4FF;
+    -fx-background-color: -color-primary-soft;
 }
 
 .input-bar .button:disabled {
@@ -207,142 +223,161 @@
 
 .input-bar .text-field {
     -fx-background-radius: 16 16 16 16;
-    -fx-background-color: #F2F6FA;
+    -fx-background-color: -color-surface-alt;
+    -fx-text-fill: -color-text-primary;
+    -fx-prompt-text-fill: -color-text-secondary;
     -fx-padding: 4 8 4 8;
 }
 
 .input-bar .send-active {
-    -fx-text-fill: #1E6FFF;
+    -fx-text-fill: -color-primary;
+}
+
+/* 输入栏的图标按钮（回形针 / 发送）：ikonli 图标颜色跟随主题 */
+.input-bar .attach-button .ikonli-font-icon {
+    -fx-icon-color: -color-text-primary;
+}
+.input-bar .send-button .ikonli-font-icon {
+    -fx-icon-color: -color-text-muted;
+}
+.input-bar .send-button:enabled .ikonli-font-icon {
+    -fx-icon-color: -color-primary;
 }
 
 .header-button {
-    -fx-background-color: #EEF3FB;
-    -fx-text-fill: #1565C0;
+    -fx-background-color: -color-surface-alt;
+    -fx-text-fill: -color-link;
     -fx-background-radius: 10;
     -fx-padding: 3 8 3 8;
     -fx-cursor: hand;
+}
+
+/* 标题栏的字体设置图标（ikonli） */
+.header-font-button {
+    -fx-icon-color: -color-text-primary;
+    -fx-icon-size: 16px;
 }
 
 .md-view {
     -fx-min-width: 0;
 }
 .md-view .text {
-    -fx-fill: #212121;
+    -fx-fill: -color-text-primary;
 }
 .md-h1, .md-h2, .md-h3 {
-    -fx-text-fill: #212121;
+    -fx-text-fill: -color-text-primary;
 }
 .md-h1 { -fx-font-weight: bold; }
 .md-h2 { -fx-font-weight: bold; }
 .md-h3 { -fx-font-weight: bold; }
 .md-code {
     -fx-font-family: monospace;
-    -fx-background-color: #F4F4F5;
-    -fx-text-fill: #212121;
+    -fx-background-color: -color-surface-muted;
+    -fx-text-fill: -color-text-primary;
     -fx-padding: 6;
 }
 .md-code .text {
-    -fx-fill: #212121;
+    -fx-fill: -color-text-primary;
     -fx-font-family: "Menlo", "Consolas", monospace;
 }
 .md-inline-code {
     -fx-font-family: monospace;
-    -fx-fill: #212121;
+    -fx-fill: -color-text-primary;
 }
 .md-quote {
-    -fx-border-color: #D0D7E2;
+    -fx-border-color: -color-border-quote;
     -fx-border-width: 0 0 0 3;
     -fx-padding: 0 0 0 8;
 }
 .md-list-prefix {
-    -fx-text-fill: #212121;
-    -fx-fill: #212121;
+    -fx-text-fill: -color-text-primary;
+    -fx-fill: -color-text-primary;
 }
 .md-table {
-    -fx-border-color: #D4D4D8;
+    -fx-border-color: -color-border-strong;
     -fx-border-width: 1;
-    -fx-background-color: #FFFFFF;
+    -fx-background-color: -color-surface;
 }
 .md-table-cell {
     -fx-padding: 4 8 4 8;
-    -fx-border-color: #E4E4E7;
+    -fx-border-color: -color-border;
     -fx-border-width: 0 1 1 0;
 }
 .md-table-header {
     -fx-font-weight: bold;
-    -fx-background-color: #F4F4F5;
+    -fx-background-color: -color-surface-muted;
 }
 .tool-card {
-    -fx-background-color: #F4F4F5;
+    -fx-background-color: -color-surface-muted;
     -fx-padding: 4 8 4 8;
     -fx-background-radius: 8;
-    -fx-border-color: #D4D4D8;
+    -fx-border-color: -color-border-strong;
     -fx-border-radius: 8;
     -fx-border-width: 1;
 }
 .tool-card-label {
-    -fx-text-fill: #3F3F46;
+    -fx-text-fill: -color-text-body;
 }
 .tool-card .hyperlink {
-    -fx-text-fill: #1565C0;
+    -fx-text-fill: -color-link;
 }
 .knowledge-pane {
-    -fx-background-color: #FFFFFF;
+    -fx-background-color: -color-surface;
 }
 .knowledge-sources {
     -fx-padding: 8 8 4 8;
 }
 
 .knowledge-source {
-    -fx-text-fill: #1565C0;
+    -fx-text-fill: -color-link;
 }
 
 .knowledge-source-active {
     -fx-font-weight: bold;
-    -fx-text-fill: #0D47A1;
+    -fx-text-fill: -color-link-strong;
 }
 .knowledge-host {
-    -fx-background-color: #FFFFFF;
-    -fx-background: #FFFFFF;
+    -fx-background-color: -color-surface;
+    -fx-background: -color-surface;
     -fx-min-height: 0;
     -fx-pref-height: 1;
 }
 .knowledge-host > .viewport {
-    -fx-background-color: #FFFFFF;
+    -fx-background-color: -color-surface;
 }
 
 .thinking-block {
-    -fx-background-color: #F4F4F5;
+    -fx-background-color: -color-surface-muted;
     -fx-background-radius: 8;
     -fx-padding: 8 10 8 10;
-    -fx-border-color: #D4D4D8;
+    -fx-border-color: -color-border-strong;
     -fx-border-radius: 8;
     -fx-border-width: 1;
 }
 
 .thinking-title {
     -fx-font-weight: bold;
-    -fx-text-fill: #52525B;
+    -fx-text-fill: -color-text-caption;
 }
 
 .thinking-body {
-    -fx-text-fill: #3F3F46;
+    -fx-text-fill: -color-text-body;
 }
 
 .tree-cell {
-    -fx-text-fill: #212121;
+    -fx-text-fill: -color-text-primary;
 }
 .tree-cell:filled:selected,
 .tree-cell:filled:selected:focused {
-    -fx-background-color: #E4E4E7;
-    -fx-text-fill: #212121;
+    -fx-background-color: -color-border;
+    -fx-text-fill: -color-text-primary;
 }
 
 .mention-popup {
-    -fx-background-color: #FFFFFF;
-    -fx-border-color: #E4E7ED;
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-border;
     -fx-border-width: 1;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.12), 8, 0, 0, 2);
+    -fx-effect: dropshadow(gaussian, -color-shadow-popup, 8, 0, 0, 2);
     -fx-padding: 4 0 4 0;
 }
 
@@ -352,21 +387,21 @@
 }
 
 .mention-row-active {
-    -fx-background-color: #F2F6FA;
+    -fx-background-color: -color-surface-alt;
 }
 
 .mention-name {
-    -fx-text-fill: #1F2329;
+    -fx-text-fill: -color-text-heading;
 }
 
 /* 选区色必须写在 Text 上，TextFlow 吃不到 -fx-selection-fill */
 .selectable-text-flow .text {
-    -fx-selection-fill: #90CAF9;
+    -fx-selection-fill: -color-selection;
 }
 
 /* Markdown 链接：视觉模拟原 Hyperlink 样式（蓝色 + 下划线） */
 .selectable-text-flow .md-link {
-    -fx-fill: #1565C0;
+    -fx-fill: -color-link;
     -fx-underline: true;
     -fx-cursor: hand;
 }
@@ -374,7 +409,7 @@
 /* Markdown 行内 code：等宽 + 灰底 */
 .selectable-text-flow .md-inline-code {
     -fx-font-family: "Menlo", "Consolas", monospace;
-    -fx-background-color: rgba(0, 0, 0, 0.06);
+    -fx-background-color: -color-code-inline-bg;
 }
 
 /* Markdown 加粗（Task 5 bold 修复引入的 style class） */
@@ -383,7 +418,7 @@
 }
 
 .bubble-text-selectable .text {
-    -fx-selection-fill: #90CAF9;
+    -fx-selection-fill: -color-selection;
 }
 
 .image-draft {

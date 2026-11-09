@@ -219,32 +219,25 @@ class ChatControllerKelsyTest {
         c.setOnOpenKnowledge(opened::add);
         assertTrue(c.send("@tars 我最近有什么待办项？").accepted());
         assertTrue(asked.getFirst().contains("我最近有什么待办项？"));
+        drainFx();
         assertEquals(List.of("knowledge/todos/2026-09-07-给晓慧发kelly代码.md"), sources.getLast());
+        drainFx();
         assertEquals("knowledge/todos/2026-09-07-给晓慧发kelly代码.md", opened.getLast());
         assertTrue(c.knowledgeVisibleProperty().get());
     }
 
     @Test
-    void todoAskOpensDiskCardsWhenReplyHasNoPath() throws Exception {
+    void todoAskUsesOnlyRetrievedDatabaseTasks() throws Exception {
         List<List<String>> sources = new ArrayList<>();
-        List<String> opened = new ArrayList<>();
-        List<String> asked = new ArrayList<>();
-        ChatController c = controller(new ArrayList<>(), asked, true, true,
-                false, (text, handler) -> {
-                    handler.onTextDelta("有一张待办：给晓慧发 kelly 代码。");
-                    handler.onComplete();
-                });
-        Path userRoot = c.knowledgeStore().workspace();
-        Files.createDirectories(userRoot.resolve("knowledge/todos"));
-        Files.writeString(userRoot.resolve("knowledge/todos/2026-09-07-给晓慧发kelly代码.md"),
-                "# 待办 · 给晓慧发 kelly 代码\n- 截止：2026-09-07\n- 状态：open\n- 标题：给晓慧发 kelly 代码\n");
-        c.setOnCitationSources(sources::add);
-        c.setOnOpenKnowledge(opened::add);
-        assertTrue(c.send("@tars 我最近有什么重要待办？").accepted());
-        assertTrue(asked.getFirst().contains("我最近有什么重要待办？"));
-        assertEquals(List.of("knowledge/todos/2026-09-07-给晓慧发kelly代码.md"), sources.getLast());
-        assertEquals("knowledge/todos/2026-09-07-给晓慧发kelly代码.md", opened.getLast());
-        assertTrue(c.knowledgeVisibleProperty().get());
+        java.util.concurrent.atomic.AtomicReference<String> ref=new java.util.concurrent.atomic.AtomicReference<>();
+        ChatController c=controller(new ArrayList<>(),new ArrayList<>(),true,true,false,(text,handler)->{
+            handler.onToolCall("todo_list","{}");
+            handler.onToolResult("todo_list",ref.get());
+            handler.onTextDelta("有一条任务。");handler.onComplete();
+        });
+        var task=c.knowledgeStore().todos().create(new com.mordor.kelly.kelsy.todo.TodoRepository.Input("发代码","",LocalDate.of(2026,9,7),0,List.of()));
+        ref.set("todo:"+task.uid());c.setOnCitationSources(sources::add);
+        c.send("@tars 有什么待办？");drainFx();assertEquals(List.of(ref.get()),sources.getLast());
     }
 
     @Test
@@ -259,17 +252,22 @@ class ChatControllerKelsyTest {
                 });
         Path userRoot = c.knowledgeStore().workspace();
         Files.createDirectories(userRoot.resolve("knowledge/meetings"));
-        Files.writeString(userRoot.resolve("knowledge/meetings/2026-09-04-客户XX-交付licence.md"),
+        com.mordor.kelly.kelsy.service.ArticleFixtures.writeString(userRoot.resolve("knowledge/meetings/2026-09-04-客户XX-交付licence.md"),
                 "# 会议 · 客户XX · 交付 licence\n- 结论：先申请再发货\n");
-        Files.writeString(userRoot.resolve("knowledge/meetings/unrelated.md"),
+        com.mordor.kelly.kelsy.service.ArticleFixtures.writeString(userRoot.resolve("knowledge/meetings/unrelated.md"),
                 "# 备忘\n- 结论：无关条目\n");
         c.setOnCitationSources(sources::add);
         c.setOnOpenKnowledge(opened::add);
+        c.knowledgeStore().index().reconcile();
         assertTrue(c.send("@tars 我最近有什么会议？").accepted());
         assertTrue(asked.getFirst().contains("我最近有什么会议？"));
+        drainFx();
         assertEquals(List.of("knowledge/meetings/2026-09-04-客户XX-交付licence.md"), sources.getLast());
+        drainFx();
         assertFalse(sources.getLast().contains("knowledge/meetings/unrelated.md"));
+        drainFx();
         assertFalse(sources.getLast().contains("knowledge/KNOWLEDGE.md"));
+        drainFx();
         assertEquals("knowledge/meetings/2026-09-04-客户XX-交付licence.md", opened.getLast());
     }
 
@@ -285,12 +283,15 @@ class ChatControllerKelsyTest {
                 });
         Path userRoot = c.knowledgeStore().workspace();
         Files.createDirectories(userRoot.resolve("knowledge/people"));
-        Files.writeString(userRoot.resolve("knowledge/people/张三.md"), "# 张三\n- 角色：合作方\n");
+        com.mordor.kelly.kelsy.service.ArticleFixtures.writeString(userRoot.resolve("knowledge/people/张三.md"), "# 张三\n- 角色：合作方\n");
         c.setOnCitationSources(sources::add);
         c.setOnOpenKnowledge(opened::add);
+        c.knowledgeStore().index().reconcile();
         assertTrue(c.send("@tars 张三是谁").accepted());
         assertTrue(asked.getFirst().contains("张三是谁"));
+        drainFx();
         assertEquals(List.of("knowledge/people/张三.md"), sources.getLast());
+        drainFx();
         assertEquals("knowledge/people/张三.md", opened.getLast());
     }
 
@@ -309,12 +310,14 @@ class ChatControllerKelsyTest {
                                 "knowledge/todos/2026-09-12-周报.md")),
                 EnumSet.of(ReminderSlot.LOGIN));
         c.applyReminder(batch, LocalDate.of(2026, 9, 4));
+        drainFx();
         Message last = c.getMessages().getLast();
         assertEquals(Sender.ASSISTANT, last.sender());
         assertTrue(last.content().startsWith("还有 2 条待办待处理"));
         assertEquals(List.of(
                 "knowledge/todos/2026-09-10-申请.md",
                 "knowledge/todos/2026-09-12-周报.md"), sources.getLast());
+        drainFx();
         assertEquals("knowledge/todos/2026-09-10-申请.md", opened.getLast());
         assertTrue(c.knowledgeVisibleProperty().get());
     }
@@ -330,9 +333,11 @@ class ChatControllerKelsyTest {
                         "knowledge/todos/2026-09-10-申请.md")),
                 EnumSet.of(ReminderSlot.TEN));
         c.applyReminder(batch, LocalDate.of(2026, 9, 4));
+        drainFx();
         assertEquals(Sender.ASSISTANT, c.getMessages().getLast().sender());
         assertTrue(sources.isEmpty());
         c.finishAskWithoutRetrieval();
+        drainFx();
         assertEquals(List.of("knowledge/todos/2026-09-10-申请.md"), sources.getLast());
     }
 
@@ -340,13 +345,13 @@ class ChatControllerKelsyTest {
     void fireRemindersAtUsesLedgerCatchUp() throws Exception {
         ChatController c = controller(new ArrayList<>(), new ArrayList<>(), true, true);
         Path userRoot = c.knowledgeStore().workspace();
-        Files.createDirectories(userRoot.resolve("knowledge/todos"));
-        Files.writeString(userRoot.resolve("knowledge/todos/2026-09-04-当天.md"),
-                "- 截止：2026-09-04\n- 状态：open\n- 标题：当天\n");
-        c.attachReminders(new TodoReminderService(userRoot));
+        c.knowledgeStore().todos().create(new com.mordor.kelly.kelsy.todo.TodoRepository.Input("当天","",LocalDate.of(2026,9,4),0,List.of()));
+        c.attachReminders(new TodoReminderService(c.knowledgeStore().todos()));
         c.fireRemindersAt(LocalDateTime.of(2026, 9, 4, 10, 1));
+        drainFx();
         assertEquals(Sender.ASSISTANT, c.getMessages().getLast().sender());
         c.fireRemindersAt(LocalDateTime.of(2026, 9, 4, 10, 2));
+        drainFx();
         long assistant = c.getMessages().stream().filter(m -> m.sender() == Sender.ASSISTANT).count();
         assertEquals(1, assistant);
         c.stopReminders();
@@ -371,7 +376,7 @@ class ChatControllerKelsyTest {
         KelsyPaths paths = KelsyPaths.forHome(tmp);
         Files.createDirectories(paths.config().getParent());
         if (configured) {
-            Files.writeString(paths.config(), "{\"model\":{\"apiKey\":\"sk-test\"}}");
+            com.mordor.kelly.kelsy.service.ArticleFixtures.writeString(paths.config(), "{\"model\":{\"apiKey\":\"sk-test\"}}");
         }
         String thatImCode = offline ? ChatController.OFFLINE_IM_CODE : "ROOM";
         KelsyRoomSettings settings = new KelsyRoomSettings(new MemoryPrefs());
@@ -404,5 +409,12 @@ class ChatControllerKelsyTest {
                 settings,
                 runtime,
                 offline);
+    }
+    private static void drainFx() throws Exception {
+        if(javafx.application.Platform.isFxApplicationThread())return;
+        var latch=new java.util.concurrent.CountDownLatch(1);
+        try { javafx.application.Platform.runLater(latch::countDown); }
+        catch(IllegalStateException noToolkit){return;}
+        assertTrue(latch.await(5,java.util.concurrent.TimeUnit.SECONDS));
     }
 }

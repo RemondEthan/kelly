@@ -17,8 +17,8 @@ class KnowledgeIndexTest {
     @Test
     void findsAliasAfterReconcile() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/meetings"));
-        Files.writeString(dir.resolve("MEMORY.md"), "- ptr\n");
-        Files.writeString(
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- ptr\n");
+        ArticleFixtures.writeString(
                 dir.resolve("knowledge/meetings/2026-09-04-客户XX-交付licence.md"),
                 """
                 # 会议 · 客户XX · 交付 licence
@@ -36,8 +36,8 @@ class KnowledgeIndexTest {
     @Test
     void dateWindowSkipsOutOfRangeDiary() throws Exception {
         Files.createDirectories(dir.resolve("memory"));
-        Files.writeString(dir.resolve("memory/2026-03-15.md"), "- 与张三敲定评审方案\n");
-        Files.writeString(dir.resolve("memory/2026-08-01.md"), "- 与张三喝咖啡\n");
+        ArticleFixtures.writeString(dir.resolve("memory/2026-03-15.md"), "- 与张三敲定评审方案\n");
+        ArticleFixtures.writeString(dir.resolve("memory/2026-08-01.md"), "- 与张三喝咖啡\n");
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
             idx.reconcile();
             var hits = idx.search(FindQuery.parse("半年前 张三", LocalDate.of(2026, 9, 2)), 12);
@@ -51,10 +51,10 @@ class KnowledgeIndexTest {
         Files.createDirectories(dir.resolve("memory"));
         for (int i = 0; i < 80; i++) {
             var day = LocalDate.of(2026, 6, 1).plusDays(i);
-            Files.writeString(dir.resolve("memory/" + day + ".md"),
+            ArticleFixtures.writeString(dir.resolve("memory/" + day + ".md"),
                     "- 张三 张三 张三 张三 张三 高相关\n");
         }
-        Files.writeString(dir.resolve("memory/2026-03-15.md"), "- 与张三敲定评审方案\n");
+        ArticleFixtures.writeString(dir.resolve("memory/2026-03-15.md"), "- 与张三敲定评审方案\n");
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
             idx.reconcile();
             var hits = idx.search(FindQuery.parse("半年前 张三", LocalDate.of(2026, 9, 2)), 12);
@@ -66,8 +66,8 @@ class KnowledgeIndexTest {
 
     @Test
     void corruptDbDeletedAndReopened() throws Exception {
-        Files.writeString(dir.resolve("MEMORY.md"), "- a\n");
-        Files.writeString(dir.resolve(".kelly-index.db"), "not a sqlite database");
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- a\n");
+        ArticleFixtures.writeString(dir.resolve(".kelly-index.db"), "not a sqlite database");
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
             idx.reconcile();
             var hits = idx.search(FindQuery.parse("a", LocalDate.of(2026, 1, 1)), 12);
@@ -77,12 +77,12 @@ class KnowledgeIndexTest {
 
     @Test
     void schemaBumpRebuilds() throws Exception {
-        Files.writeString(dir.resolve("MEMORY.md"), "- a\n");
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- a\n");
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
             idx.reconcile();
         }
         try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + dir.resolve(".kelly-index.db"))) {
-            c.createStatement().executeUpdate("UPDATE meta SET value='0' WHERE key='schema_version'");
+            c.createStatement().executeUpdate("DROP TRIGGER search_content_ai");
         }
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
             idx.reconcile();
@@ -96,9 +96,9 @@ class KnowledgeIndexTest {
     void reconcileTenThousandCardsFindsLastFile() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/inbox"));
         for (int i = 0; i < 10_000; i++) {
-            Files.writeString(dir.resolve("knowledge/inbox/n" + i + ".md"), "- token" + i + "\n");
+            ArticleFixtures.writeString(dir.resolve("knowledge/inbox/n" + i + ".md"), "- token" + i + "\n");
         }
-        Files.writeString(dir.resolve("MEMORY.md"), "- ptr\n");
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- ptr\n");
         long start = System.nanoTime();
         try (KnowledgeIndex idx = KnowledgeIndex.open(dir)) {
             idx.reconcile();

@@ -31,7 +31,7 @@ public final class LocalEvidence {
 
     /** 停用词列表：这些短语在搜索时不提供有效信息，应被过滤 */
     private static final List<String> STOPS = List.of(
-            "最近有什么", "当时怎么定的", "怎么定的", "是谁", "请问", "一下",
+            "是什么", "最近有什么", "当时怎么定的", "怎么定的", "是谁", "请问", "一下",
             "我最近", "有什么", "当时", "最近", "我");
 
     /** 回忆线索：相对时间、归档类型，或 ISO 年月 */
@@ -109,6 +109,7 @@ public final class LocalEvidence {
         for (String stop : STOPS) {
             q = q.replace(stop, " ");
         }
+        for (String field : List.of("邮箱", "电话", "地址")) q=q.replace(field," " + field + " ");
         return FindQuery.parse(q, LocalDate.now()).keywords().stream()
                 .filter(k -> k.length() >= 2)
                 .filter(k -> !k.equals("你好"))

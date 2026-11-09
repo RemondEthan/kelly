@@ -1,61 +1,59 @@
 /* ========================================================================
    LOGIN PANE — QQ 风格
+   --------------------------------------------------------------------
+   颜色全部引用主题色板（ui/theme/theme.css），深色模式下由
+   ui/theme/dark.css 统一换色，本文件无需改动。
    ======================================================================== */
 
 /* 整张登录面板：QQ 风的浅蓝紫色背景 */
 .login-root {
-    -fx-background-color: linear-gradient(to bottom, #E8F0FE 0%, #F5F8FF 100%);
+    -fx-background-color: linear-gradient(to bottom, -color-login-top 0%, -color-bg-app 100%);
 }
 
 /* 顶部 banner：QQ 蓝渐变（左深 → 右浅） */
 .login-banner {
-    -fx-background-color: linear-gradient(to right, #1E6FFF 0%, #00C0FF 100%);
+    -fx-background-color: linear-gradient(to right, -color-primary-solid 0%, -color-banner-end 100%);
     -fx-padding: 14 18 14 18;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 6, 0, 0, 2);
+    -fx-effect: dropshadow(gaussian, -color-shadow-header, 6, 0, 0, 2);
 }
 
 .login-banner-title {
-    -fx-text-fill: white;
+    -fx-text-fill: -color-text-inverse;
     -fx-font-size: 16px;
     -fx-font-weight: 700;
 }
 
 .login-banner-status {
-    -fx-text-fill: white;
+    -fx-text-fill: -color-text-inverse;
     -fx-font-size: 11px;
     -fx-opacity: 0.92;
 }
 
-/* 表单卡片：白底圆角阴影 */
-.login-logo-row {
-    -fx-alignment: center;
-    -fx-padding: 0 0 6 0;
-}
-
+/* 表单卡片：圆角阴影 */
 .login-card {
-    -fx-background-color: white;
+    -fx-background-color: -color-surface;
     -fx-background-radius: 6 6 6 6;
     -fx-border-radius: 6 6 6 6;
-    -fx-border-color: #E4E7ED;
+    -fx-border-color: -color-border;
     -fx-border-width: 1 1 1 1;
     -fx-padding: 18 22 18 22;
-    -fx-effect: dropshadow(gaussian, rgba(30, 111, 255, 0.10), 12, 0, 0, 2);
+    -fx-effect: dropshadow(gaussian, -color-shadow-app, 12, 0, 0, 2);
 }
 
 .login-title {
     -fx-font-size: 18px;
     -fx-font-weight: 700;
-    -fx-text-fill: #1E6FFF;
+    -fx-text-fill: -color-primary;
 }
 
 .login-subtitle {
     -fx-font-size: 10px;
-    -fx-text-fill: #909399;
+    -fx-text-fill: -color-text-secondary;
 }
 
 .login-field-label {
     -fx-font-size: 11px;
-    -fx-text-fill: #909399;
+    -fx-text-fill: -color-text-secondary;
 }
 
 .login-avatar-slot {
@@ -63,37 +61,39 @@
     -fx-cursor: hand;
 }
 .login-root .avatar-fallback-self {
-    -fx-fill: #1E6FFF;
+    -fx-fill: -color-primary-solid;
 }
 .login-root .avatar-fallback {
-    -fx-fill: #8BB6FF;
+    -fx-fill: -color-avatar;
 }
 .login-root .avatar-initial,
 .login-root .avatar-placeholder {
-    -fx-text-fill: white;
+    -fx-text-fill: -color-text-inverse;
     -fx-font-size: 11px;
     -fx-font-weight: 600;
 }
 
-/* 输入框：QQ 风的浅蓝边框，聚焦时变蓝 */
+/* 输入框：聚焦时变蓝 */
 .login-field {
     -fx-font-size: 12px;
-    -fx-background-color: white;
-    -fx-border-color: #C0D3E8;
+    -fx-background-color: -color-surface;
+    -fx-text-fill: -color-text-primary;
+    -fx-prompt-text-fill: -color-text-secondary;
+    -fx-border-color: -color-field-border;
     -fx-border-radius: 4 4 4 4;
     -fx-background-radius: 4 4 4 4;
     -fx-padding: 5 8 5 8;
 }
 
 .login-field:focused {
-    -fx-border-color: #1E6FFF;
-    -fx-effect: dropshadow(gaussian, rgba(30,111,255,0.18), 4, 0, 0, 0);
+    -fx-border-color: -color-primary;
+    -fx-effect: dropshadow(gaussian, -color-shadow-focus, 4, 0, 0, 0);
 }
 
 /* info 提示（蓝色，QQ 风格） */
 .login-info {
-    -fx-background-color: #E8F4FF;
-    -fx-text-fill: #1E6FFF;
+    -fx-background-color: -color-primary-soft;
+    -fx-text-fill: -color-primary;
     -fx-background-radius: 4 4 4 4;
     -fx-padding: 6 10 6 10;
     -fx-font-size: 10px;
@@ -101,8 +101,8 @@
 
 /* error 提示（红色） */
 .login-error {
-    -fx-background-color: #FFEBEE;
-    -fx-text-fill: #C62828;
+    -fx-background-color: -color-error-bg;
+    -fx-text-fill: -color-error-text;
     -fx-background-radius: 4 4 4 4;
     -fx-padding: 6 10 6 10;
     -fx-font-size: 10px;
@@ -110,8 +110,8 @@
 
 /* "登录"按钮：主题蓝 */
 .login-connect {
-    -fx-background-color: #1E6FFF;
-    -fx-text-fill: white;
+    -fx-background-color: -color-primary-solid;
+    -fx-text-fill: -color-on-primary;
     -fx-background-radius: 4 4 4 4;
     -fx-padding: 8 16 8 16;
     -fx-font-size: 13px;
@@ -120,11 +120,11 @@
 }
 
 .login-connect:hover {
-    -fx-background-color: #3D82FF;
+    -fx-background-color: -color-primary-hover;
 }
 
 .login-connect:pressed {
-    -fx-background-color: #1554CC;
+    -fx-background-color: -color-primary-pressed;
 }
 
 .login-connect:disabled {
@@ -138,33 +138,44 @@
 
 .login-footer-status {
     -fx-font-size: 10px;
-    -fx-text-fill: #5BC85B;
+    -fx-text-fill: -color-success;
 }
 
 .login-footer-version {
     -fx-font-size: 10px;
-    -fx-text-fill: #909399;
+    -fx-text-fill: -color-text-secondary;
 }
 
 .login-offline {
     -fx-font-size: 12px;
-    -fx-text-fill: #5C6370;
+    -fx-text-fill: -color-text-muted;
+}
+
+/* 脱机登录复选框：勾选标记跟随主色 */
+.login-offline .box {
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-field-border;
+    -fx-background-radius: 3;
+}
+.login-offline:selected .box {
+    -fx-background-color: -color-primary-solid;
+    -fx-border-color: -color-primary-solid;
 }
 
 .login-browse {
-    -fx-background-color: #EEF3FB;
-    -fx-text-fill: #1565C0;
+    -fx-background-color: -color-surface-alt;
+    -fx-text-fill: -color-link;
     -fx-background-radius: 4 4 4 4;
     -fx-padding: 6 12 6 12;
     -fx-font-size: 11px;
     -fx-cursor: hand;
 }
 
-/* "接入大模型"次要按钮：白底、浅蓝边 */
+/* "接入大模型"次要按钮：浅底、浅蓝边 */
 .login-model-config {
-    -fx-background-color: #F5F8FF;
-    -fx-text-fill: #1E6FFF;
-    -fx-border-color: #C0D3E8;
+    -fx-background-color: -color-surface-alt;
+    -fx-text-fill: -color-primary;
+    -fx-border-color: -color-field-border;
     -fx-border-radius: 4 4 4 4;
     -fx-background-radius: 4 4 4 4;
     -fx-padding: 6 12 6 12;
@@ -174,11 +185,11 @@
 }
 
 .login-model-config:hover {
-    -fx-background-color: #E8F0FE;
+    -fx-background-color: -color-primary-soft;
 }
 
 .login-model-config:pressed {
-    -fx-background-color: #DCE7FA;
+    -fx-background-color: -color-border;
 }
 
 .login-model-config:disabled {
@@ -190,10 +201,10 @@
     -fx-padding: 0 30 0 0; /* 给右侧 👁 按钮让位 */
 }
 
-/* 👁 按钮：透明、hover/pressed 浅灰底、focused 蓝边 */
+/* 👁 按钮：透明、hover/pressed 底色、focused 蓝边 */
 .login-eye-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #5C6370;
+    -fx-text-fill: -color-text-muted;
     -fx-font-size: 13px;
     -fx-padding: 0 4 0 4;
     -fx-cursor: hand;
@@ -201,15 +212,15 @@
 }
 
 .login-eye-button:hover {
-    -fx-background-color: #F2F6FA;
+    -fx-background-color: -color-surface-alt;
 }
 
 .login-eye-button:pressed {
-    -fx-background-color: #E4E7ED;
+    -fx-background-color: -color-border;
 }
 
 .login-eye-button:focused {
-    -fx-border-color: #1E6FFF;
+    -fx-border-color: -color-primary;
     -fx-border-width: 1;
     -fx-border-radius: 3;
 }

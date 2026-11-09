@@ -20,13 +20,19 @@ public record AskGrounding(boolean searched, List<KnowledgeStore.Hit> attached, 
         if (LocalEvidence.terms(userText).isEmpty()) {
             return new AskGrounding(false, List.of(), userText);
         }
+        if (store == null) return new AskGrounding(false, List.of(), userText);
+        if (LocalEvidence.mentionsTodos(userText)) return new AskGrounding(false, List.of(),
+            "【任务查询】请先使用 todo_list/get 获取实时状态；涉及文章事实时再 knowledge_search。\n" + userText);
         double min = LocalEvidence.looksLikeRecall(userText) ? RECALL_MIN_SCORE : DEFAULT_MIN_SCORE;
-        List<KnowledgeStore.Hit> attached = store.search(FindQuery.parse(userText, today)).stream()
+        FindQuery parsed = FindQuery.parse(userText, today);
+        List<KnowledgeStore.Hit> attached = store.search(new FindQuery(parsed.fromInclusive(),parsed.toInclusive(),LocalEvidence.terms(userText))).stream()
                 .filter(hit -> !KnowledgeStore.isAskCandidateExcluded(hit.relativePath()))
                 .filter(hit -> hit.score() >= min)
                 .limit(MAX_ATTACH)
                 .toList();
-        return new AskGrounding(true, attached, userText);
+        String state = store.index() == null ? "FAILED" : store.index().status().state();
+        String original = "STALE".equals(state) ? "【部分知识文件未索引】现有候选仍可使用；不要自动修复、删除文件或反复重试。\n" + userText : "READY".equals(state) ? userText : "【知识索引状态：" + state + "】空结果不代表没有归档，请稍后补查。\n" + userText;
+        return new AskGrounding(true, attached, original);
     }
 
     public String messageForModel() {
@@ -34,12 +40,12 @@ public record AskGrounding(boolean searched, List<KnowledgeStore.Hit> attached, 
             return original;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("【已检索候选】请先 read_file 下列路径，结论以卡片字段为准。不要把 MEMORY.md 里没有当成没归档。\n");
+        sb.append("【已检索候选】请先 knowledge_get(path,expectedHash) 核验下列路径，结论以卡片字段为准。不要把 MEMORY.md 里没有当成没归档。\n");
         for (KnowledgeStore.Hit hit : attached) {
             if (KnowledgeStore.isAskCandidateExcluded(hit.relativePath())) {
                 continue;
             }
-            sb.append("- ").append(hit.relativePath()).append(" （").append(hit.snippet()).append("）\n");
+            sb.append("- ").append(hit.relativePath()).append(" hash=").append(hit.contentHash()).append(" （").append(hit.snippet()).append("）\n");
         }
         sb.append("\n用户原话：\n").append(original);
         return sb.toString();

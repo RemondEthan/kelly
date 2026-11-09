@@ -30,8 +30,9 @@ public final class CjkNgrams {
             }
             out.append(run);
             if (run.length() >= 2) {
-                for (int i = 0; i < run.length() - 1; i++) {
-                    out.append(' ').append(run, i, i + 2);
+                int[] points = run.codePoints().toArray();
+                for (int i = 0; i < points.length - 1; i++) {
+                    out.append(' ').appendCodePoint(points[i]).appendCodePoint(points[i+1]);
                 }
             }
             cjk.setLength(0);
@@ -66,9 +67,6 @@ public final class CjkNgrams {
     }
 
     static boolean isCjk(int cp) {
-        Character.UnicodeBlock b = Character.UnicodeBlock.of(cp);
-        return b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-                || b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-                || b == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
+        return Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN;
     }
 }

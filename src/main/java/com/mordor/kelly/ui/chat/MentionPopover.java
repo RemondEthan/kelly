@@ -2,6 +2,7 @@ package com.mordor.kelly.ui.chat;
 
 import com.mordor.kelly.model.RoomMember;
 import com.mordor.kelly.ui.AvatarView;
+import com.mordor.kelly.ui.theme.ThemeService;
 import javafx.geometry.Bounds;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -82,6 +83,8 @@ public final class MentionPopover {
         scroller.setPrefWidth(220);
         String css = MentionPopover.class.getResource("chat.css").toExternalForm();
         scroller.getStylesheets().add(css);
+        // 弹窗自带独立 Scene：单独装载色板并套用当前主题
+        ThemeService.apply(scroller, new ThemeService().load());
         popup.getContent().add(scroller);
         popup.setAutoHide(true);  // 点击外部自动关闭
     }
@@ -116,6 +119,8 @@ public final class MentionPopover {
         items.addAll(candidates);
         active = 0;  // 默认选中第一个
         rebuild();
+        // 每次显示都重新套一次主题，避免用户中途切换深浅色后弹窗仍是旧配色
+        ThemeService.apply(scroller, new ThemeService().load());
         Bounds b = anchor.localToScreen(anchor.getBoundsInLocal());
         if (b == null) {
             return;

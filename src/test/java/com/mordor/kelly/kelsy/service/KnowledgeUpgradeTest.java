@@ -22,9 +22,9 @@ class KnowledgeUpgradeTest {
     void oldLayoutIndexedWithoutRewritingCards() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/meetings"));
         Path card = dir.resolve("knowledge/meetings/2026-09-04-客户XX-交付licence.md");
-        Files.writeString(card, "- 别名：许可证\n- 结论：先申请再发货\n");
+        ArticleFixtures.writeString(card, "- 别名：许可证\n- 结论：先申请再发货\n");
         long mtime = Files.getLastModifiedTime(card).toMillis();
-        Files.writeString(dir.resolve("MEMORY.md"), "- 2026-09-04 licence → knowledge/meetings/2026-09-04-客户XX-交付licence.md\n");
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), "- 2026-09-04 licence → knowledge/meetings/2026-09-04-客户XX-交付licence.md\n");
         KelsyRuntime.upgradeKnowledge(dir);
         try (var store = open(dir)) {
             var paths = store.search(FindQuery.parse("许可证", LocalDate.of(2026, 9, 4))).stream()
@@ -45,7 +45,7 @@ class KnowledgeUpgradeTest {
                     .append(i)
                     .append(".md\n");
         }
-        Files.writeString(dir.resolve("MEMORY.md"), sb.toString());
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"), sb.toString());
         assertTrue(Files.size(dir.resolve("MEMORY.md")) > MemoryCompactor.LIMIT_BYTES);
         KelsyRuntime.upgradeKnowledge(dir);
         assertTrue(Files.isRegularFile(dir.resolve("MEMORY.md.bak")));
@@ -58,10 +58,10 @@ class KnowledgeUpgradeTest {
     @Test
     void deletedIndexRebuildsSamePaths() throws Exception {
         Files.createDirectories(dir.resolve("knowledge/meetings"));
-        Files.writeString(
+        ArticleFixtures.writeString(
                 dir.resolve("knowledge/meetings/2026-09-04-客户XX-交付licence.md"),
                 "- 别名：许可证\n- 结论：先申请再发货\n");
-        Files.writeString(dir.resolve("MEMORY.md"),
+        ArticleFixtures.writeString(dir.resolve("MEMORY.md"),
                 "- 2026-09-04 licence → knowledge/meetings/2026-09-04-客户XX-交付licence.md\n");
         KelsyRuntime.upgradeKnowledge(dir);
         Set<String> before;

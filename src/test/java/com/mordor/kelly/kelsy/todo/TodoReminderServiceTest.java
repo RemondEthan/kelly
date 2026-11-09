@@ -75,7 +75,7 @@ class TodoReminderServiceTest {
     }
 
     private void writeOpen(String rel, String title, String due) throws Exception {
-        write(rel, "- 截止：" + due + "\n- 状态：open\n- 标题：" + title + "\n");
+        try(var repo=new TodoRepository(root)){repo.create(new TodoRepository.Input(title,"",java.time.LocalDate.parse(due),0,java.util.List.of()));}
     }
 
     private void write(String rel, String body) throws Exception {

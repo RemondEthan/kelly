@@ -1,5 +1,6 @@
 package com.mordor.kelly.ui.chat.font;
 
+import com.mordor.kelly.ui.theme.ThemeService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -63,6 +64,11 @@ public final class FontSettingsDialog {
         ObservableList<String> families = FXCollections.observableArrayList(Font.getFamilies());
         ComboBox<String> fontBox = new ComboBox<>(families);
         fontBox.setMaxWidth(Double.MAX_VALUE);
+        // 下拉列表自带独立 Scene：单独挂色板，弹层才跟得上深色主题
+        fontBox.setCellFactory(list -> {
+            ThemeService.apply(list, new ThemeService().load());
+            return new FontListCell();
+        });
         // 设置初始选中值
         String initialFamily = current.fontFamily();
         if (initialFamily == null && !families.isEmpty()) {
@@ -92,6 +98,8 @@ public final class FontSettingsDialog {
                 labelled("字号：", sizeRow),
                 buttons);
         root.setPadding(new Insets(14));
+        // 字体对话框是独立 Scene：单独装载色板并套用当前主题
+        ThemeService.apply(root, new ThemeService().load());
 
         // "应用"按钮：保存设置 → 应用到聊天界面 → 关闭对话框
         apply.setOnAction(e -> {

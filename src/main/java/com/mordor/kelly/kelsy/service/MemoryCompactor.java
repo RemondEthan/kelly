@@ -77,7 +77,7 @@ public final class MemoryCompactor {
                 continue;
             }
             Files.createDirectories(dest.getParent());
-            Files.writeString(dest, card.markdown() == null ? "" : card.markdown(), StandardCharsets.UTF_8);
+            new MarkdownDocumentStore(root).create(card.relativePath(), "收件箱", "inbox", List.of(), List.of(), null, card.markdown() == null ? "" : card.markdown());
         }
         Path memory = root.resolve("MEMORY.md");
         Path bak = root.resolve("MEMORY.md.bak");

@@ -4,7 +4,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -14,24 +13,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ChatFontApplierTest {
 
-    private static boolean toolkitStarted = false;
 
     @BeforeAll
     static void startToolkit() throws Exception {
         try {
             Platform.startup(() -> { });
-            toolkitStarted = true;
         } catch (IllegalStateException already) {
-            toolkitStarted = true;
         }
     }
 
-    @AfterAll
-    static void stopToolkit() throws Exception {
-        if (toolkitStarted) {
-            try { Platform.exit(); } catch (Exception ignore) { }
-        }
-    }
+    // JavaFX is process-scoped; do not exit it between test classes.
 
     @Test
     void nullFamily_doesNotInjectFontFamilyStyle() {

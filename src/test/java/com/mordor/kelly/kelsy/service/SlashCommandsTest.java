@@ -16,7 +16,7 @@ class SlashCommandsTest {
         assertTrue(r.outgoing().contains("今天和张三敲定了方案"));
         assertTrue(r.outgoing().contains("卡片"));
         assertTrue(r.outgoing().contains("澄清"));
-        assertTrue(r.outgoing().contains("knowledge/meetings"));
+        assertTrue(r.outgoing().contains("knowledge_create"));
     }
 
     @Test

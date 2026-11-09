@@ -137,10 +137,12 @@ public class InputBar extends VBox {
         hideDraft();
 
         Button attach = new Button();
+        attach.getStyleClass().add("attach-button");
         attach.setGraphic(new FontIcon(MaterialDesignP.PAPERCLIP));
         attach.setOnAction(e -> showAttachStub());
 
         sendBtn = new Button();
+        sendBtn.getStyleClass().add("send-button");
         sendBtn.setGraphic(new FontIcon(MaterialDesignS.SEND));
         sendBtn.setDisable(true);
 

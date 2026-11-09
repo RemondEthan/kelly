@@ -169,6 +169,9 @@ public class ChatController {
     private List<String> deferredTodoPaths;
     /** 待办事项提醒服务 */
     private TodoReminderService reminders;
+    private volatile boolean controllerClosed;
+    private long reminderGeneration;
+    private final java.util.Set<UUID> renderedReminderBatches = new java.util.HashSet<>();
     /** 提醒定时器线程池 */
     private ScheduledExecutorService reminderClock;
     /** 下一次提醒的定时任务 */
@@ -536,7 +539,18 @@ public class ChatController {
             kelsyBusy.set(false);
             return;
         }
-        AskGrounding grounding = AskGrounding.prepare(knowledgeStore(), outgoing, LocalDate.now());
+        KnowledgeStore store = knowledgeStore();
+        if (Platform.isFxApplicationThread()) {
+            java.util.concurrent.CompletableFuture.supplyAsync(() -> AskGrounding.prepare(store, outgoing, LocalDate.now()))
+                .whenComplete((grounding, error) -> onFx(() -> {
+                    if (controllerClosed) return;
+                    if (error != null) { kelsyBusy.set(false); addSystem("知识检索失败：" + rootMessage(error)); return; }
+                    sendGroundedAsk(outgoing, assistant, grounding);
+                }));
+        } else sendGroundedAsk(outgoing, assistant, AskGrounding.prepare(store, outgoing, LocalDate.now()));
+    }
+
+    private void sendGroundedAsk(String outgoing, AssistantService assistant, AskGrounding grounding) {
         citations.addPaths(grounding.citationPaths());
         AssistantMessage reply = AssistantMessage.streaming(Sender.ASSISTANT);
         liveAssistant.set(reply);
@@ -668,6 +682,7 @@ public class ChatController {
         if (batch == null || batch.todos().isEmpty()) {
             return;
         }
+        if (batch.uid()!=null && !renderedReminderBatches.add(batch.uid())) return;
         persistAssistant(ReminderFormat.encode(batch.todos(), today));
         List<String> paths = batch.todos().stream().map(TodoCard::relativePath).toList();
         if (kelsyBusy.get()) {
@@ -689,31 +704,40 @@ public class ChatController {
 
     void startReminders(TodoReminderService service) {
         attachReminders(service);
-        fireRemindersAt(LocalDateTime.now());
         reminderClock = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "kelly-todo-reminder");
             t.setDaemon(true);
             return t;
         });
+        reminderClock.execute(() -> fireRemindersAt(LocalDateTime.now()));
         scheduleNext(LocalDateTime.now());
     }
 
     void fireRemindersAt(LocalDateTime now) {
-        if (reminders == null || now == null) {
-            return;
-        }
-        reminders.evaluate(now).ifPresent(batch -> {
-            reminders.commit(batch, now.toLocalDate());
-            applyReminder(batch, now.toLocalDate());
-        });
+        TodoReminderService service = reminders;
+        long generation = reminderGeneration;
+        if (service == null || now == null || controllerClosed) return;
+        try {
+            service.evaluate(now).ifPresent(batch -> onFx(() -> {
+                if (controllerClosed || reminders != service || reminderGeneration != generation) return;
+                applyReminder(batch, now.toLocalDate());
+                Runnable ack = () -> {
+                    try { service.commit(batch, now.toLocalDate()); }
+                    catch (RuntimeException e) { Diagnostics.warn("todo", "Reminder acknowledgement failed: %s", e.getMessage()); }
+                };
+                if(Platform.isFxApplicationThread()) java.util.concurrent.CompletableFuture.runAsync(ack); else ack.run();
+            }));
+        } catch (RuntimeException e) { Diagnostics.warn("todo", "Reminder query failed: %s", e.getMessage()); }
     }
 
     public void close() {
+        controllerClosed = true;
         stopReminders();
         history.close();
     }
 
     public void stopReminders() {
+        reminderGeneration++;
         if (reminderTick != null) {
             reminderTick.cancel(false);
             reminderTick = null;
@@ -722,6 +746,7 @@ public class ChatController {
             reminderClock.shutdownNow();
             reminderClock = null;
         }
+        if (reminders != null) reminders.close();
         reminders = null;
     }
 
@@ -735,17 +760,7 @@ public class ChatController {
         if (!LocalEvidence.mentionsTodos(outgoing)) {
             return;
         }
-        List<String> open = TodoScanner.list(store.workspace()).stream()
-                .filter(card -> card.status() == TodoStatus.OPEN)
-                .map(TodoCard::relativePath)
-                .toList();
-        LinkedHashSet<String> todos = new LinkedHashSet<>();
-        for (String path : turnPaths) {
-            if (path != null && path.startsWith("knowledge/todos/") && open.contains(path)) {
-                todos.add(path);
-            }
-        }
-        citations.addPaths(List.copyOf(todos));
+        // Task evidence comes from todo_get/list tool results, never an unrelated list snapshot.
     }
 
     private void showTodoSources(List<String> paths) {
@@ -769,11 +784,11 @@ public class ChatController {
         }
         LocalDateTime next = TodoReminderService.nextClock(now);
         long delay = Duration.between(now, next).toMillis();
-        reminderTick = reminderClock.schedule(() -> onFx(() -> {
+        reminderTick = reminderClock.schedule(() -> {
             LocalDateTime t = LocalDateTime.now();
             fireRemindersAt(t);
             scheduleNext(t);
-        }), Math.max(delay, 0), TimeUnit.MILLISECONDS);
+        }, Math.max(delay, 0), TimeUnit.MILLISECONDS);
     }
 
     private void refreshMemoryWarn() {
@@ -812,8 +827,18 @@ public class ChatController {
         if (runtime == null) {
             return;
         }
-        List<KnowledgeStore.Hit> hits = runtime.store(username)
-                .search(FindQuery.parse(query, LocalDate.now()));
+        KnowledgeStore store = runtime.store(username);
+        Runnable find = () -> {
+            try {
+                var hits = store.search(FindQuery.parse(query, LocalDate.now()));
+                String status = store.index() == null ? "FAILED" : store.index().status().state();
+                onFx(() -> { if(!controllerClosed) showFind(hits,status); });
+            } catch(RuntimeException e) { onFx(() -> { if(!controllerClosed) addSystem("知识检索暂不可用：" + e.getMessage()); }); }
+        };
+        if(Platform.isFxApplicationThread()) java.util.concurrent.CompletableFuture.runAsync(find); else find.run();
+    }
+
+    private void showFind(List<KnowledgeStore.Hit> hits,String status) {
         citations.beginAsk();
         citations.addPaths(hits.stream().map(KnowledgeStore.Hit::relativePath).toList());
         if (citations.commitIfRetrieved()) {
@@ -821,7 +846,7 @@ public class ChatController {
             onCitationSources.accept(citations.shown());
             openKnowledge(citations.evidencePath());
         }
-        addSystem(formatFind(hits));
+        addSystem("READY".equals(status) ? formatFind(hits) : "知识索引状态：" + status + "，结果可能不完整。\n" + (hits.isEmpty()?"请稍后重试。":formatFind(hits)));
     }
 
     private static String formatFind(List<KnowledgeStore.Hit> hits) {
@@ -1038,6 +1063,7 @@ public class ChatController {
             String mime = meta == null ? "image/png" : meta.mime();
             mediaStore.writePart(imCode, chunk.id(), original);
             mediaStore.commitOriginal(imCode, chunk.id(), mime);
+            ImageViewer.originalReady(mediaStore.resolve(imCode, MediaStore.originalName(chunk.id(), mime)));
         } catch (Exception e) {
             Diagnostics.warn("chat", "peer image chunk failed: %s", e.toString());
         }

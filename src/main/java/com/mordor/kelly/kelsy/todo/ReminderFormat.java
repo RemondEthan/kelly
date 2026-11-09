@@ -42,7 +42,7 @@ public final class ReminderFormat {
         StringBuilder sb = new StringBuilder();
         sb.append("还有 ").append(list.size()).append(" 条待办待处理");
         for (TodoCard card : list) {
-            sb.append('\n').append("- ").append(card.title())
+            sb.append('\n').append("- ").append(card.title().replace('\n',' ').replace('\r',' ').replace('|','｜'))
                     .append(" | 截止 ").append(card.due());
             if (TodoReminderPolicy.overdue(card, today)) {
                 sb.append(" | 已逾期");
@@ -114,7 +114,7 @@ public final class ReminderFormat {
         } else {
             return Optional.empty();
         }
-        if (title.isBlank() || !path.startsWith("knowledge/todos/")) {
+        if (title.isBlank() || !path.matches("todo:[0-9a-fA-F-]{36}")) {
             return Optional.empty();
         }
         return Optional.of(new ReminderItem(title, due, overdue, path));

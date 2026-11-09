@@ -1,0 +1,132 @@
+/* ========================================================================
+   主题色板（亮色）
+   --------------------------------------------------------------------
+   JavaFX 的换肤机制：在色板锚点节点（.theme-root）上定义 CSS 自定义属性，
+   其它样式表直接「引用属性名」当颜色用，例如：
+
+       .bubble-peer { -fx-background-color: -color-bubble-peer; }
+
+   深色色板见 dark.css —— 同样的属性名在 .theme-root.theme-dark 下重新赋值，
+   只要给根节点加上/去掉 theme-dark 样式类，JavaFX 会在下一个脉冲
+   整体重刷 CSS，界面即时变色，无需重新加载样式表。
+   ======================================================================== */
+
+.theme-root {
+    /* ── 主色 ─────────────────────────────────────────────── */
+    -color-primary:        #1E6FFF;   /* 强调色（画在浅底上的文字/图标） */
+    -color-primary-solid:  #1E6FFF;   /* 实心按钮、头像底色 */
+    -color-primary-hover:  #3D82FF;
+    -color-primary-pressed:#1554CC;
+    -color-primary-soft:   #E8F4FF;   /* 浅蓝底：提示条、悬停底色 */
+    -color-on-primary:     #FFFFFF;   /* 实心主色上的文字 */
+
+    /* ── 底色 ─────────────────────────────────────────────── */
+    -color-bg-app:         #F5F8FF;   /* 应用背景 */
+    -color-surface:        #FFFFFF;   /* 卡片 / 表格 / 弹窗底 */
+    -color-surface-alt:    #F2F6FA;   /* 输入框、选中行底 */
+    -color-surface-muted:  #F4F4F5;   /* 代码块、工具卡片底 */
+    -color-bubble-self:    #D6E6FF;   /* 自己的气泡 */
+    -color-bubble-peer:    #E8F4FF;   /* 对方的气泡 */
+    -color-bubble-system:  #EFF6FF;   /* 系统提示气泡 */
+
+    /* ── 文字 ─────────────────────────────────────────────── */
+    -color-text-primary:   #212121;   /* 正文 */
+    -color-text-secondary: #909399;   /* 次要说明 */
+    -color-text-muted:     #5C6370;   /* 弱化文字（成员名、离线提示） */
+    -color-text-strong:    #1A2A3A;   /* 待办提醒正文 */
+    -color-text-heading:   #1F2329;   /* 提及列表名字 */
+    -color-text-body:      #3F3F46;   /* 工具卡片 / 思考块正文 */
+    -color-text-caption:   #52525B;   /* 思考块标题 */
+    -color-text-due:       #3D4F66;   /* 待办截止时间 */
+    -color-text-time:      #B4BCCC;   /* 消息时间戳 */
+    -color-text-inverse:   #FFFFFF;   /* 头像、横幅上的文字 */
+
+    /* ── 边框 ─────────────────────────────────────────────── */
+    -color-border:         #E4E7ED;
+    -color-border-strong:  #D4D4D8;
+    -color-border-quote:   #D0D7E2;
+    -color-field-border:   #C0D3E8;
+
+    /* ── 链接 ─────────────────────────────────────────────── */
+    -color-link:           #1565C0;
+    -color-link-strong:    #0D47A1;
+
+    /* ── 头像 ─────────────────────────────────────────────── */
+    -color-avatar:         #8BB6FF;
+    -color-avatar-self:    #1E6FFF;
+
+    /* ── 状态色 ───────────────────────────────────────────── */
+    -color-error-bg:       #FFEBEE;
+    -color-error-text:     #C62828;
+    -color-success:        #5BC85B;
+    -color-todo-item:      #9FC4E8;
+
+    /* ── 选区 / 代码 ──────────────────────────────────────── */
+    -color-selection:      #90CAF9;
+    -color-code-inline-bg: rgba(0, 0, 0, 0.06);
+
+    /* ── 半透明玻璃层 ─────────────────────────────────────── */
+    -color-header-bg:      rgba(255, 255, 255, 0.38);
+    -color-member-bg:      rgba(255, 255, 255, 0.48);
+    -color-input-bg:       rgba(255, 255, 255, 0.72);
+    -color-border-glass:   rgba(228, 231, 237, 0.65);
+
+    /* ── 阴影 ─────────────────────────────────────────────── */
+    -color-shadow-app:     rgba(30, 111, 255, 0.10);
+    -color-shadow-focus:   rgba(30, 111, 255, 0.18);
+    -color-shadow-header:  rgba(0, 0, 0, 0.15);
+    -color-shadow-popup:   rgba(0, 0, 0, 0.12);
+
+    /* ── 渐变端点 ─────────────────────────────────────────── */
+    -color-login-top:      #E8F0FE;
+    -color-banner-end:     #00C0FF;
+
+    /* ── modena 控件基色 ──────────────────────────────────── */
+    -fx-base: #F5F8FF;
+}
+
+/* ========================================================================
+   通用控件：让没有被自定义样式覆盖的控件也跟着色板走
+   （下拉框、单选/复选框、滚动条）
+   ======================================================================== */
+
+.theme-root .combo-box {
+    -fx-background-color: -color-surface;
+    -fx-border-color: -color-field-border;
+    -fx-border-radius: 4;
+}
+.theme-root .combo-box .list-cell {
+    -fx-text-fill: -color-text-primary;
+    -fx-background-color: -color-surface;
+}
+.theme-root .combo-box .list-cell:hover {
+    -fx-background-color: -color-primary-soft;
+}
+
+/* 下拉列表弹层自带独立 Scene，用独立样式类兜住（见 ThemeService.apply） */
+.theme-root .theme-list-cell {
+    -fx-text-fill: -color-text-primary;
+    -fx-background-color: -color-surface;
+}
+.theme-root .theme-list-cell:filled:selected,
+.theme-root .theme-list-cell:filled:selected:hover {
+    -fx-background-color: -color-primary-soft;
+    -fx-text-fill: -color-text-primary;
+}
+
+.theme-root .scroll-bar {
+    -fx-background-color: transparent;
+}
+.theme-root .scroll-bar .thumb {
+    -fx-background-color: -color-border-strong;
+    -fx-background-radius: 4;
+}
+.theme-root .scroll-bar .increment-button,
+.theme-root .scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.theme-root .scroll-bar .increment-arrow,
+.theme-root .scroll-bar .decrement-arrow {
+    -fx-background-color: -color-border-strong;
+}

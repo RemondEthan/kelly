@@ -190,28 +190,14 @@ class KnowledgeStoreUserRootTest {
      * 没有种子文件，内层有用户真实内容，验证 bootstrap 一次调用就清理完。
      */
     @Test
-    void bootstrapSeedsAndMigratesInOneCall() throws Exception {
-        // 用户名 ksw，内层遗留 <dir>/ksw/ksw/knowledge/meetings/...
-        Path userRoot = dir.resolve("ksw");
-        Files.createDirectories(userRoot.resolve("ksw/knowledge/meetings"));
-        Files.writeString(userRoot.resolve("ksw/MEMORY.md"), "## 用户的真实索引");
-        Files.writeString(userRoot.resolve("ksw/knowledge/meetings/2026-09-21-红叶-集成讨论.md"),
-                "# 2026-09-21 与红叶集成讨论会议\n");
-
-        Path resolved2 = KnowledgeStore.bootstrap(dir, "ksw");
-
-        // 1. 返回的就是 <dir>/ksw
-        assertEquals(userRoot.toAbsolutePath().normalize(), resolved2);
-
-        // 2. 种子已写入（<root>/MEMORY.md 存在）
-        assertTrue(Files.isRegularFile(userRoot.resolve("MEMORY.md")));
-
-        // 3. 嵌套层已被合并：用户的真实 MEMORY.md 应被提升到外层，覆盖种子
-        assertEquals("## 用户的真实索引", Files.readString(userRoot.resolve("MEMORY.md")));
-        assertTrue(Files.exists(userRoot.resolve("knowledge/meetings/2026-09-21-红叶-集成讨论.md")));
-
-        // 4. 内层目录应被清掉
-        assertFalse(Files.exists(userRoot.resolve("ksw")));
+    void bootstrapSeedsWithoutImportingNestedData() throws Exception {
+        Path nested=dir.resolve("ksw/ksw");
+        Files.createDirectories(nested);
+        Files.writeString(nested.resolve("MEMORY.md"),"nested content");
+        Path root=KnowledgeStore.bootstrap(dir,"ksw");
+        assertTrue(Files.isRegularFile(root.resolve("MEMORY.md")));
+        assertEquals("nested content",Files.readString(nested.resolve("MEMORY.md")));
+        assertFalse(Files.readString(root.resolve("MEMORY.md")).equals("nested content"));
     }
 
     @Test

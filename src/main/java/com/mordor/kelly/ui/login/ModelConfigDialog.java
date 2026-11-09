@@ -5,6 +5,7 @@ import com.mordor.kelly.kelsy.config.ConfigLoader;
 import com.mordor.kelly.kelsy.config.KelsyConfig;
 import com.mordor.kelly.kelsy.provider.ProviderCatalog;
 import com.mordor.kelly.kelsy.provider.ProviderSpec;
+import com.mordor.kelly.ui.theme.ThemeService;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
@@ -64,6 +65,8 @@ public final class ModelConfigDialog {
         }
         dialog.getDialogPane().getStylesheets().add(
                 ModelConfigDialog.class.getResource("login.css").toExternalForm());
+        // 对话框是独立的 Scene：单独装载色板并套用当前主题
+        ThemeService.apply(dialog.getDialogPane(), new ThemeService().load());
 
         ButtonType saveType = new ButtonType("保存", ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
@@ -74,20 +77,12 @@ public final class ModelConfigDialog {
         ComboBox<ProviderSpec> providerCombo = new ComboBox<>();
         providerCombo.getItems().setAll(providers);
         providerCombo.setMaxWidth(Double.MAX_VALUE);
-        providerCombo.setCellFactory(p -> new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(ProviderSpec s, boolean empty) {
-                super.updateItem(s, empty);
-                setText(empty || s == null ? null : s.displayName());
-            }
+        providerCombo.setCellFactory(p -> {
+            // 下拉列表自带独立 Scene：单独挂色板，弹层才跟得上深色主题
+            ThemeService.apply(p, new ThemeService().load());
+            return new ProviderListCell();
         });
-        providerCombo.setButtonCell(new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(ProviderSpec s, boolean empty) {
-                super.updateItem(s, empty);
-                setText(empty || s == null ? null : s.displayName());
-            }
-        });
+        providerCombo.setButtonCell(new ProviderListCell());
 
         TextField modelNameField = field();
         modelNameField.setPromptText("模型名（如 MiniMax-M3）");

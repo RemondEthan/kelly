@@ -47,6 +47,10 @@ public class PasswordVisibilityField extends StackPane {
         masked.setVisible(true);
         masked.setManaged(true);
 
+        // 内层两个输入框复用 .login-field 样式：底色、边框、占位文字都跟随主题色板
+        masked.getStyleClass().add("login-field");
+        visible.getStyleClass().add("login-field");
+
         eye.getStyleClass().addAll("login-eye-button", "login-eye-shown");
         eye.setFocusTraversable(false);
         eye.setCursor(javafx.scene.Cursor.HAND);

@@ -1,5 +1,7 @@
 package com.mordor.kelly.ui.chat;
 
+import com.mordor.kelly.ui.theme.ThemeService;
+
 import java.util.List;
 
 import javafx.geometry.Bounds;
@@ -41,6 +43,9 @@ public class EmojiPopover {
     /** 浮动弹窗，只能添加一个根节点 */
     private final Popup popup = new Popup();
 
+    /** 表情网格（弹窗内容根节点，兼作色板锚点） */
+    private GridPane grid;
+
     /** 表情插入的目标文本框（聊天输入框） */
     private final TextField target;
 
@@ -58,7 +63,8 @@ public class EmojiPopover {
      */
     public EmojiPopover(TextField target) {
         this.target = target;
-        popup.getContent().add(buildGrid());  // Popup 只能 add 一次根节点
+        grid = buildGrid();
+        popup.getContent().add(grid);  // Popup 只能 add 一次根节点
         popup.setAutoHide(true);  // 点击弹窗外自动关闭
         popup.setOnAutoHide(e -> lastAutoHideNanos = System.nanoTime());
     }
@@ -72,15 +78,15 @@ public class EmojiPopover {
      * @return 填充好表情按钮的 GridPane
      */
     private GridPane buildGrid() {
-        GridPane grid = new GridPane();
-        grid.setHgap(2);   // 水平间距
-        grid.setVgap(2);   // 垂直间距
-        grid.setPadding(new Insets(6));
-        // inline CSS：弹窗独立使用，不污染全局样式表
-        grid.setStyle("-fx-background-color: white; " +
-                "-fx-border-color: #E0E0E0; " +
-                "-fx-border-radius: 4; " +
-                "-fx-background-radius: 4;");
+        GridPane panel = new GridPane();
+        panel.setHgap(2);   // 水平间距
+        panel.setVgap(2);   // 垂直间距
+        panel.setPadding(new Insets(6));
+        // 弹窗自带独立 Scene：挂上聊天样式表并单独装载色板
+        panel.getStyleClass().add("emoji-popup");
+        panel.getStylesheets().add(
+                EmojiPopover.class.getResource("chat.css").toExternalForm());
+        ThemeService.apply(panel, new ThemeService().load());
 
         List<String> emojis = EmojiImages.getSupportedEmojis();
         for (int i = 0; i < emojis.size(); i++) {
@@ -95,9 +101,9 @@ public class EmojiPopover {
                 insertAtCaret(emoji);
                 popup.hide();
             });
-            grid.add(b, i % 6, i / 6);  // col = i%6, row = i/6
+            panel.add(b, i % 6, i / 6);  // col = i%6, row = i/6
         }
-        return grid;
+        return panel;
     }
 
     /**
@@ -134,6 +140,8 @@ public class EmojiPopover {
         Bounds b = anchor.localToScreen(anchor.getBoundsInLocal());
         if (b == null) return;
         Node content = popup.getContent().getFirst();
+        // 每次显示都重新套一次主题，避免用户中途切换深浅色后弹窗仍是旧配色
+        ThemeService.apply(grid, new ThemeService().load());
         content.applyCss();           // 强制计算布局
         double h = content.prefHeight(-1);
         if (h <= 0) h = 200;

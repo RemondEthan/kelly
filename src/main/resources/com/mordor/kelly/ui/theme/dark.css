@@ -1,0 +1,99 @@
+/* ========================================================================
+   深色主题
+   --------------------------------------------------------------------
+   根节点加上 theme-dark 样式类后，本文件里的色板覆盖 theme.css 中的
+   亮色色板，其余样式表（login.css / chat.css）无需改动即可整体变深。
+   ======================================================================== */
+
+.theme-root.theme-dark {
+    /* ── 主色 ─────────────────────────────────────────────── */
+    -color-primary:        #6FA8FF;
+    -color-primary-solid:  #2F6BE0;
+    -color-primary-hover:  #3D7BF0;
+    -color-primary-pressed:#2459B8;
+    -color-primary-soft:   #22304A;
+    -color-on-primary:     #FFFFFF;
+
+    /* ── 底色 ─────────────────────────────────────────────── */
+    -color-bg-app:         #15181D;
+    -color-surface:        #1E222A;
+    -color-surface-alt:    #262B34;
+    -color-surface-muted:  #2A2F38;
+    -color-bubble-self:    #2F4C7A;
+    -color-bubble-peer:    #262B34;
+    -color-bubble-system:  #232830;
+
+    /* ── 文字（深色模式下一律用白色，次要文字靠透明度区分层次）── */
+    -color-text-primary:   #FFFFFF;
+    -color-text-secondary: rgba(255, 255, 255, 0.78);
+    -color-text-muted:     rgba(255, 255, 255, 0.68);
+    -color-text-strong:    #FFFFFF;
+    -color-text-heading:   #FFFFFF;
+    -color-text-body:      rgba(255, 255, 255, 0.88);
+    -color-text-caption:   rgba(255, 255, 255, 0.82);
+    -color-text-due:       rgba(255, 255, 255, 0.75);
+    -color-text-time:      rgba(255, 255, 255, 0.60);
+    -color-text-inverse:   #FFFFFF;
+
+    /* ── 边框 ─────────────────────────────────────────────── */
+    -color-border:         #2E343E;
+    -color-border-strong:  #3A414D;
+    -color-border-quote:   #3A414D;
+    -color-field-border:   #3A414D;
+
+    /* ── 链接 ─────────────────────────────────────────────── */
+    -color-link:           #6FA8FF;
+    -color-link-strong:    #8FC0FF;
+
+    /* ── 头像 ─────────────────────────────────────────────── */
+    -color-avatar:         #3E5F91;
+    -color-avatar-self:    #3B7BE8;
+
+    /* ── 状态色 ───────────────────────────────────────────── */
+    -color-error-bg:       #3A2226;
+    -color-error-text:     #FF8A80;
+    -color-success:        #6FD08A;
+    -color-todo-item:      #33445C;
+
+    /* ── 选区 / 代码 ──────────────────────────────────────── */
+    -color-selection:      #2F4C7A;
+    -color-code-inline-bg: rgba(255, 255, 255, 0.10);
+
+    /* ── 半透明玻璃层 ─────────────────────────────────────── */
+    -color-header-bg:      rgba(30, 34, 42, 0.55);
+    -color-member-bg:      rgba(30, 34, 42, 0.68);
+    -color-input-bg:       rgba(26, 30, 37, 0.88);
+    -color-border-glass:   rgba(255, 255, 255, 0.10);
+
+    /* ── 阴影 ─────────────────────────────────────────────── */
+    -color-shadow-app:     rgba(0, 0, 0, 0.45);
+    -color-shadow-focus:   rgba(111, 168, 255, 0.35);
+    -color-shadow-header:  rgba(0, 0, 0, 0.55);
+    -color-shadow-popup:   rgba(0, 0, 0, 0.60);
+
+    /* ── 渐变端点 ─────────────────────────────────────────── */
+    -color-login-top:      #1B1F27;
+    -color-banner-end:     #0090D8;
+
+    /* ── modena 控件基色（按钮/输入框/下拉框/滚动条整体变深）── */
+    -fx-base: #1E222A;
+    -fx-background: #15181D;
+    -fx-control-inner-background: #262B34;
+}
+
+/* 聊天背景图（浅蓝雪花图）在深色模式下压暗一层 */
+.theme-root.theme-dark .wallpaper-dim {
+    -fx-background-color: rgba(9, 11, 15, 0.87);
+}
+
+/* Text 节点不自带 .text 样式类，正文需按节点类型设置填充色。 */
+.theme-root.theme-dark .bubble-self Text,
+.theme-root.theme-dark .bubble-peer Text,
+.theme-root.theme-dark .md-view Text {
+    -fx-fill: #FFFFFF;
+}
+
+/* 正文中的链接保留主题链接色。 */
+.theme-root.theme-dark .selectable-text-flow Text.md-link {
+    -fx-fill: -color-link;
+}

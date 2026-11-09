@@ -64,6 +64,7 @@ public final class KelsyRuntime implements AutoCloseable {
 
     /** 运行时是否已关闭的标志位，关闭后不可再使用 */
     private boolean closed;
+    private String username;
 
     /**
      * 解析实际的工作空间路径。
@@ -94,8 +95,8 @@ public final class KelsyRuntime implements AutoCloseable {
         KelsyPaths paths = resolve(KelsyPaths.defaults());
         // 检查是否需要切换用户（工作空间路径变化）
         if (instance != null
-                && !instance.paths.workspace().toAbsolutePath().normalize()
-                .equals(paths.workspace().toAbsolutePath().normalize())) {
+                && (!java.util.Objects.equals(instance.username, username) || !instance.paths.workspace().toAbsolutePath().normalize()
+                .equals(paths.workspace().toAbsolutePath().normalize()))) {
             shutdown();
         }
         if (instance == null) {
@@ -141,8 +142,9 @@ public final class KelsyRuntime implements AutoCloseable {
         // 只做一半而把遗留内容留在 <userRoot>/<username>/ 下，让新版 KnowledgeStore
         // 看不到它们。
         Path userRoot = KnowledgeStore.bootstrap(paths.workspace(), username);
-        upgradeKnowledge(userRoot);
-        return new KelsyRuntime(paths, factory);
+        KelsyRuntime runtime = new KelsyRuntime(paths, factory);
+        runtime.username = username;
+        return runtime;
     }
 
     public static void upgradeKnowledge(Path userRoot) {
@@ -193,6 +195,7 @@ public final class KelsyRuntime implements AutoCloseable {
      * @return 该用户的 KnowledgeStore 实例
      */
     public synchronized KnowledgeStore store(String username) {
+        if (closed) throw new IllegalStateException("Runtime closed");
         Path root = KnowledgeStore.knowledgeRoot(paths.workspace(), username);
         if (store != null && store.workspace().equals(root)) {
             return store;

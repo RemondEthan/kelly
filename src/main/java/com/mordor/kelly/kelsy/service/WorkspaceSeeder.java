@@ -62,9 +62,9 @@ public final class WorkspaceSeeder {
             // 知识库目录结构
             Path knowledge = workspace.resolve("knowledge");
             Files.createDirectories(knowledge);
-            writeIfAbsent(knowledge.resolve("KNOWLEDGE.md"), read("KNOWLEDGE.md"));
+
             for (String folder : List.of(
-                    "people", "projects", "playbooks", "inbox", "meetings", "decisions", "todos")) {
+                    "people", "projects", "playbooks", "inbox", "meetings", "decisions", "articles")) {
                 Files.createDirectories(knowledge.resolve(folder));
             }
             // 技能定义文件（每次启动都更新）

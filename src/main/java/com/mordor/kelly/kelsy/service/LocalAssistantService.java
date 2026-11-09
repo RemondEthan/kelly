@@ -176,6 +176,8 @@ public final class LocalAssistantService implements AssistantService {
                 .build();
         agent.getToolkit().registerAgentTool(new KnowledgeSearchTool(knowledge));
         IndexingAgentTool.install(agent.getToolkit(), knowledge);
+        TodoAgentTool.install(agent.getToolkit(), knowledge.todos());
+        KnowledgeAgentTool.install(agent.getToolkit(), knowledge);
 
         RuntimeContext context = RuntimeContext.builder()
                 .sessionId(SESSION_ID)

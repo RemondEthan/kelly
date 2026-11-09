@@ -20,14 +20,14 @@ class WorkspaceSeederTest {
         WorkspaceSeeder.seed(dir);
         assertTrue(Files.isRegularFile(dir.resolve("AGENTS.md")));
         assertTrue(Files.isRegularFile(dir.resolve("MEMORY.md")));
-        assertTrue(Files.isRegularFile(dir.resolve("knowledge/KNOWLEDGE.md")));
+        assertFalse(Files.exists(dir.resolve("knowledge/KNOWLEDGE.md")));
         assertTrue(Files.isDirectory(dir.resolve("knowledge/people")));
         assertTrue(Files.isDirectory(dir.resolve("knowledge/projects")));
         assertTrue(Files.isDirectory(dir.resolve("knowledge/playbooks")));
         assertTrue(Files.isDirectory(dir.resolve("knowledge/inbox")));
         assertTrue(Files.isDirectory(dir.resolve("knowledge/meetings")));
         assertTrue(Files.isDirectory(dir.resolve("knowledge/decisions")));
-        assertTrue(Files.isDirectory(dir.resolve("knowledge/todos")));
+        assertFalse(Files.exists(dir.resolve("knowledge/todos")));
         assertTrue(Files.isRegularFile(dir.resolve("skills/kelsy-knowledge/SKILL.md")));
         assertTrue(Files.isRegularFile(dir.resolve("skills/kelsy-knowledge/references/examples.md")));
         Files.writeString(dir.resolve("AGENTS.md"), "keep-me");
@@ -49,11 +49,11 @@ class WorkspaceSeederTest {
         assertFalse(Files.readString(examples).equals("old-examples"));
         assertTrue(Files.readString(skill).contains("kelsy-knowledge"));
         assertTrue(Files.readString(skill).contains("澄清"));
-        assertTrue(Files.readString(skill).contains("knowledge/meetings"));
-        assertTrue(Files.readString(skill).contains("knowledge/todos"));
+        assertTrue(Files.readString(skill).contains("knowledge_create"));
+        assertTrue(Files.readString(skill).contains("todo_create"));
         assertTrue(Files.readString(skill).contains("已检索候选"));
         assertTrue(Files.readString(skill).contains("knowledge_search"));
-        assertTrue(Files.readString(skill).contains("状态：open"));
-        assertTrue(Files.readString(skill).contains("- 原文："));
+        assertTrue(Files.readString(skill).contains("expectedVersion"));
+        assertTrue(Files.readString(skill).contains("knowledge_get"));
     }
 }

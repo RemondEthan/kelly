@@ -55,7 +55,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements AutoCloseable {
+public final class KnowledgeStore implements AutoCloseable {
+    private final Path workspace;
+    private final KnowledgeIndex index;
+    private final com.mordor.kelly.kelsy.todo.TodoRepository todos;
+    public KnowledgeStore(Path workspace, KnowledgeIndex index) {
+        this.workspace = workspace.toAbsolutePath().normalize();
+        this.index = index;
+        try { this.todos = new com.mordor.kelly.kelsy.todo.TodoRepository(this.workspace); }
+        catch (RuntimeException e) { if(index != null) index.close(); throw e; }
+        if(index != null) index.start();
+    }
+    public Path workspace() { return workspace; }
+    public KnowledgeIndex index() { return index; }
+    public com.mordor.kelly.kelsy.todo.TodoRepository todos() { return todos; }
+
 
     /** 单个文件最大字节数（256KB） */
     public static final long MAX_FILE_BYTES = 256L * 1024;
@@ -84,7 +98,8 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
      * @param line         匹配行号（1-indexed）
      * @param snippet      匹配行的摘要文本（截断到 120 字符）
      */
-    public record Hit(String relativePath, int line, String snippet, double score) {
+    public record Hit(String relativePath, int line, String snippet, double score, String contentHash, String documentUid, double rank) {
+        public Hit(String relativePath, int line, String snippet, double score) { this(relativePath,line,snippet,score,null,null,0); }
         public Hit(String relativePath, int line, String snippet) {
             this(relativePath, line, snippet, 0);
         }
@@ -115,9 +130,6 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
     /**
      * 规范化工作空间路径。{@code index} 允许为 null（打开失败时走扫描回退）。
      */
-    public KnowledgeStore {
-        workspace = workspace.toAbsolutePath().normalize();
-    }
 
     /**
      * 构造函数：规范化工作空间并尝试打开 FTS 索引。
@@ -130,16 +142,14 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
         try {
             return KnowledgeIndex.open(workspace);
         } catch (RuntimeException e) {
-            Diagnostics.warn("kelsy", "knowledge index unavailable, falling back to scan: %s", e.toString());
+            Diagnostics.warn("kelsy", "knowledge index unavailable: %s", e.toString());
             return null;
         }
     }
 
     @Override
     public void close() {
-        if (index != null) {
-            index.close();
-        }
+        try { if (index != null) index.close(); } finally { todos.close(); }
     }
 
     /**
@@ -180,7 +190,6 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
     public static Path bootstrap(Path workspace, String username) {
         Path knowledgeRoot = knowledgeRoot(workspace, username);
         WorkspaceSeeder.seed(knowledgeRoot);
-        migrateLegacyDoubleNested(knowledgeRoot, username);
         return knowledgeRoot;
     }
 
@@ -473,7 +482,22 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
      * @return 读取结果（Ok/Missing/TooLarge/Rejected）
      */
     public Read read(String relativePath) {
-        Path resolved = resolveSafe(relativePath);
+        if(relativePath != null && relativePath.startsWith("article:")) {
+            try { relativePath = index.pathFor(java.util.UUID.fromString(relativePath.substring(8))); }
+            catch(RuntimeException e) { return new Read.Rejected(e.getMessage()); }
+        }
+        if (relativePath != null && relativePath.startsWith("todo:")) {
+            try {
+                var todo = todos.get(java.util.UUID.fromString(relativePath.substring(5)));
+                return new Read.Ok(relativePath, todo.markdown());
+            } catch (com.mordor.kelly.kelsy.storage.StorageException e) {
+                if (e.code() == com.mordor.kelly.kelsy.storage.StorageException.Code.NOT_FOUND) return new Read.Missing(relativePath);
+                return new Read.Rejected(e.getMessage());
+            } catch (IllegalArgumentException e) { return new Read.Rejected("Invalid task ID"); }
+        }
+        Path resolved;
+        try { resolved = resolveSafe(relativePath); if(resolved != null) resolved = new MarkdownDocumentStore(workspace).safe(relativePath); }
+        catch (RuntimeException e) { return new Read.Rejected(e.getMessage()); }
         if (resolved == null) {
             return new Read.Rejected("路径不在知识库内");
         }
@@ -546,18 +570,8 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
      * @param forceReconcile true 时全盘对账（模型刚写完卡后的补查）
      */
     public List<Hit> search(FindQuery query, boolean forceReconcile) {
-        if (index != null) {
-            try {
-                if (forceReconcile) {
-                    index.reconcile();
-                } else {
-                    index.reconcileIfStale();
-                }
-                return index.search(query, MAX_HITS);
-            } catch (RuntimeException ignored) {
-            }
-        }
-        return scanSearch(query);
+        if (index == null) throw new com.mordor.kelly.kelsy.storage.StorageException(com.mordor.kelly.kelsy.storage.StorageException.Code.INDEX_UNAVAILABLE,"Article index unavailable");
+        return index.search(query, MAX_HITS);
     }
 
     /**
@@ -633,7 +647,6 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
         }
         if (index != null) {
             try {
-                index.reconcileIfStale();
                 Set<String> paths = new LinkedHashSet<>();
                 // OR any needle: /find search() stays AND via FindQuery MATCH.
                 for (String needle : needles) {
@@ -653,7 +666,7 @@ public record KnowledgeStore(Path workspace, KnowledgeIndex index) implements Au
             } catch (RuntimeException ignored) {
             }
         }
-        return scanCardsContaining(needles);
+        throw new com.mordor.kelly.kelsy.storage.StorageException(com.mordor.kelly.kelsy.storage.StorageException.Code.INDEX_UNAVAILABLE,"Article index unavailable");
     }
 
     /** Catalog index page; indexed, but excluded from shown citations and card lists. */
