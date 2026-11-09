@@ -151,10 +151,18 @@ public final class KnowledgeIndex implements AutoCloseable {
     public synchronized List<KnowledgeStore.Hit> search(FindQuery query,int limit){return search(query,null,Set.of(),limit);}
     public synchronized List<KnowledgeStore.Hit> search(FindQuery query,String kind,Set<String> tags,int limit){
         check();truncated=false;int cap=Math.min(50,Math.max(0,limit));if(cap==0)return List.of();
-        String match=SearchTerms.match(String.join(" ",query.keywords()));boolean full=!match.isBlank();
+        List<String> groups=SearchTerms.groups(String.join(" ",query.keywords()));
+        String match=String.join(" OR ",groups);boolean full=!match.isBlank();
         if(!full&&query.fromInclusive()==null&&kind==null&&tags.isEmpty())return List.of();
         StringBuilder sql=new StringBuilder("SELECT d.path,d.title,d.content_hash,d.document_uid,c.heading,c.start_line,c.end_line,c.raw_text,"+(full?"bm25(article_fts,8.0,5.0,1.0)":"0.0")+" AS rank FROM chunks c JOIN documents d ON d.id=c.document_id "+(full?"JOIN article_fts ON article_fts.rowid=c.id ":"")+"WHERE d.state='ready'");
-        List<Object> args=new ArrayList<>();if(full){sql.append(" AND article_fts MATCH ?");args.add(match);}
+        List<Object> args=new ArrayList<>();if(full){
+            sql.append(" AND article_fts MATCH ?");args.add(match);
+            // Recall at document level; the ranked outer row still identifies a relevant evidence chunk.
+            if(groups.size()>1)for(String group:groups){
+                sql.append(" AND d.id IN (SELECT cx.document_id FROM chunks cx JOIN article_fts ON article_fts.rowid=cx.id WHERE article_fts MATCH ?)");
+                args.add(group);
+            }
+        }
         if(query.fromInclusive()!=null){sql.append(" AND d.event_date>=? AND d.event_date<=?");args.add(query.fromInclusive().toString());args.add(query.toInclusive().toString());}
         if(kind!=null){sql.append(" AND d.kind=?");args.add(kind);}
         for(String tag:tags){sql.append(" AND EXISTS(SELECT 1 FROM document_tags x WHERE x.document_id=d.id AND x.tag=?)");args.add(tag);}

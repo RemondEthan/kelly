@@ -28,7 +28,7 @@ class KnowledgeSearchToolTest {
     void parametersDescribeQuery() {
         Map<String, Object> schema = new KnowledgeSearchTool(new KnowledgeStore(dir)).getParameters();
         assertEquals("object", schema.get("type"));
-        assertEquals(List.of("query"), schema.get("required"));
+        assertEquals(List.of(), schema.get("required"));
         @SuppressWarnings("unchecked")
         Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
         @SuppressWarnings("unchecked")

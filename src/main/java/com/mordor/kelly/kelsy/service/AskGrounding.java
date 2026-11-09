@@ -25,11 +25,19 @@ public record AskGrounding(boolean searched, List<KnowledgeStore.Hit> attached, 
             "【任务查询】请先使用 todo_list/get 获取实时状态；涉及文章事实时再 knowledge_search。\n" + userText);
         double min = LocalEvidence.looksLikeRecall(userText) ? RECALL_MIN_SCORE : DEFAULT_MIN_SCORE;
         FindQuery parsed = FindQuery.parse(userText, today);
-        List<KnowledgeStore.Hit> attached = store.search(new FindQuery(parsed.fromInclusive(),parsed.toInclusive(),LocalEvidence.terms(userText))).stream()
+        String kind = LocalEvidence.mentionsMeetings(userText) ? "meeting" : LocalEvidence.mentionsDecisions(userText) ? "decision" : null;
+        String searchText = kind == null ? userText : userText.replace("会议", " ").replace("纪要", " ").replace("决定", " ");
+        List<String> terms = LocalEvidence.terms(searchText).stream()
+                .filter(t -> kind == null || !(t.equals("会议") || t.equals("纪要") || t.equals("决定"))).toList();
+        java.util.Map<String,KnowledgeStore.Hit> candidates = new java.util.LinkedHashMap<>();
+        if(kind != null)for(var hit:store.index().search(new FindQuery(parsed.fromInclusive(),parsed.toInclusive(),terms),kind,java.util.Set.of(),MAX_ATTACH))
+            candidates.put(hit.relativePath(),hit);
+        // Preserve lexical recall for articles whose type is generic but whose text is relevant.
+        for(var hit:store.search(new FindQuery(parsed.fromInclusive(),parsed.toInclusive(),LocalEvidence.terms(userText))))
+            candidates.putIfAbsent(hit.relativePath(),hit);
+        List<KnowledgeStore.Hit> attached = candidates.values().stream()
                 .filter(hit -> !KnowledgeStore.isAskCandidateExcluded(hit.relativePath()))
-                .filter(hit -> hit.score() >= min)
-                .limit(MAX_ATTACH)
-                .toList();
+                .filter(hit -> hit.score() >= min).limit(MAX_ATTACH).toList();
         String state = store.index() == null ? "FAILED" : store.index().status().state();
         String original = "STALE".equals(state) ? "【部分知识文件未索引】现有候选仍可使用；不要自动修复、删除文件或反复重试。\n" + userText : "READY".equals(state) ? userText : "【知识索引状态：" + state + "】空结果不代表没有归档，请稍后补查。\n" + userText;
         return new AskGrounding(true, attached, original);

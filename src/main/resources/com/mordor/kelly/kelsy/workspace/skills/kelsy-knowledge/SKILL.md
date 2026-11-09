@@ -29,6 +29,8 @@ todo_update 完整替换标题、说明、截止日期、优先级；需要保�
 
 本轮已有“已检索候选”时先 knowledge_get(path,expectedHash) 核验原文。
 需要已归档事实但候选不足时，knowledge_search 补查，再 knowledge_get 读取命中正文。
+查询会议/决定优先使用 kind=meeting/decision；query 可省略，tags 多项按 AND 过滤，from 包含、before 不包含。
+同一文章中分散在不同段落的关键词也可联合检索；不要因正文未出现“会议”二字便排除 meeting 文章。
 最多读取5篇相关原文，引用 article:<uuid> 或实际路径。
 BUILDING/STALE/FAILED 表示索引未就绪、陈旧或失败，空结果不能据此说没有归档。
 读取冲突时刷新搜索；不能把陈旧片段当成最新结论。
