@@ -40,13 +40,8 @@ public class Kelly extends Application {
 
     /** 窗口默认宽度（像素） */
     private static final double WIDTH = 720;
-    /**
-     * 窗口默认高度（像素）。
-     *
-     * <p>登录卡片的内容高度约 580px，加上上下各 38px 的留白刚好放得下，
-     * 高度给小了卡片底部（连接按钮）会被裁掉。</p>
-     */
-    private static final double HEIGHT = 680;
+    /** 登录页和聊天页共用的窗口默认高度（像素），较原来的 680px 降低 20%。 */
+    private static final double HEIGHT = 544;
 
     /** JavaFX 主窗口，应用生命周期内只有一个实例 */
     private Stage stage;

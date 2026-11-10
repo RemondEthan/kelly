@@ -87,6 +87,7 @@
 }
 
 /* Text 节点不自带 .text 样式类，正文需按节点类型设置填充色。 */
+.theme-root.theme-dark .bubble-system Text,
 .theme-root.theme-dark .bubble-self Text,
 .theme-root.theme-dark .bubble-peer Text,
 .theme-root.theme-dark .md-view Text {

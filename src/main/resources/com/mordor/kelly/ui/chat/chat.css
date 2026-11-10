@@ -117,7 +117,7 @@
     -fx-text-fill: -color-text-secondary;
     -fx-alignment: center;
 }
-.bubble-system .text {
+.bubble-system Text {
     -fx-fill: -color-text-secondary;
 }
 

@@ -48,6 +48,8 @@ public class EmojiPopover {
 
     /** 表情插入的目标文本框（聊天输入框） */
     private final TextField target;
+    private javafx.scene.control.IndexRange insertionSelection;
+    private String insertionText;
 
     /**
      * 上次 autoHide 触发的时间戳（纳秒）。
@@ -66,7 +68,9 @@ public class EmojiPopover {
         grid = buildGrid();
         popup.getContent().add(grid);  // Popup 只能 add 一次根节点
         popup.setAutoHide(true);  // 点击弹窗外自动关闭
-        popup.setOnAutoHide(e -> lastAutoHideNanos = System.nanoTime());
+        popup.setOnAutoHide(e -> {
+            lastAutoHideNanos = System.nanoTime();insertionSelection = null;insertionText = null;
+        });
     }
 
     /**
@@ -98,8 +102,8 @@ public class EmojiPopover {
                     "-fx-padding: 2 4 2 4;");
             // 点击表情：插入到文本框光标处 + 关闭弹窗
             b.setOnAction(e -> {
-                insertAtCaret(emoji);
                 popup.hide();
+                insertAtCaret(emoji);
             });
             panel.add(b, i % 6, i / 6);  // col = i%6, row = i/6
         }
@@ -109,18 +113,35 @@ public class EmojiPopover {
     /**
      * 将 emoji 插入到文本框当前光标位置。
      *
-     * <p>实现方式：将文本切成 [光标前] + emoji + [光标后] 三段重新拼接，
-     * 然后将光标移到 emoji 之后，便于连续插入多个表情。</p>
+     * <p>保留打开弹窗前的选区，使用 replaceText 插入以保留撤销记录；
+     * 恢复焦点后折叠选区到 emoji 后，避免后续输入覆盖表情。</p>
      *
      * @param emoji 要插入的 emoji 字符串
      */
-    private void insertAtCaret(String emoji) {
-        String text = target.getText();
-        int caret = target.getCaretPosition();  // 光标在文本中的字符索引
-        String next = text.substring(0, caret) + emoji + text.substring(caret);
-        target.setText(next);
-        target.positionCaret(caret + emoji.length());  // 光标移到 emoji 后
-        target.requestFocus();  // 把键盘焦点还给文本框
+    void rememberSelection() {
+        insertionSelection = target.getSelection();insertionText = target.getText();
+    }
+
+    void insertAtCaret(String emoji) {
+        var range = insertionSelection != null && java.util.Objects.equals(insertionText, target.getText())
+                ? insertionSelection : target.getSelection();
+        insertionSelection = null;insertionText = null;
+        int start = range.getStart();
+        int end = range.getEnd();
+        target.replaceText(start, end, emoji);
+        int caret = start + emoji.length();
+        String expected = target.getText();
+        target.requestFocus();
+        target.selectRange(caret, caret);
+        // Native popup focus restoration may arrive after the button action (Windows/GTK).
+        javafx.application.Platform.runLater(() -> {
+            if (!expected.equals(target.getText())) return; // Never disturb subsequent typing.
+            var selection = target.getSelection();
+            if ((selection.getStart() == 0 && selection.getEnd() == expected.length())
+                    || (selection.getStart() == start && selection.getEnd() == caret)) {
+                target.selectRange(caret, caret);
+            }
+        });
     }
 
     /**
@@ -137,6 +158,7 @@ public class EmojiPopover {
         if (System.nanoTime() - lastAutoHideNanos < 250_000_000L) {
             return;
         }
+        if (insertionSelection == null || !java.util.Objects.equals(insertionText, target.getText())) rememberSelection();
         Bounds b = anchor.localToScreen(anchor.getBoundsInLocal());
         if (b == null) return;
         Node content = popup.getContent().getFirst();
@@ -153,6 +175,6 @@ public class EmojiPopover {
      * 隐藏弹窗。
      */
     public void hide() {
-        popup.hide();
+        popup.hide();insertionSelection = null;insertionText = null;
     }
 }

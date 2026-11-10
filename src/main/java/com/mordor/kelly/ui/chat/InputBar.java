@@ -154,11 +154,8 @@ public class InputBar extends VBox {
             hint.setManaged(false);
         });
 
-        textField = new TextField();
+        textField = new EmojiTextField();
         textField.setPromptText("输入消息...");
-        // Windows 上默认字体不支持彩色 emoji，显式设置支持 emoji 的字体
-        // macOS/Linux 找不到该字体时自动回退系统默认，无副作用
-        textField.setStyle("-fx-font-family: 'Segoe UI Emoji', 'Segoe UI', sans-serif;");
         textField.setOnAction(e -> send(onSend, onSendImage));
         textField.textProperty().addListener((obs, o, n) -> refreshSendEnabled());
         HBox.setHgrow(textField, Priority.ALWAYS);
@@ -187,6 +184,8 @@ public class InputBar extends VBox {
         emoji.setGraphic(EmojiImages.view("😊", 18));
         emoji.setStyle("-fx-background-color: transparent; -fx-cursor: hand;");
         emojiPopover = new EmojiPopover(textField);
+        emoji.setFocusTraversable(false);
+        emoji.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, e -> emojiPopover.rememberSelection());
         emoji.setOnAction(e -> {
             mentionPopover.hide();
             emojiPopover.show(emoji);
