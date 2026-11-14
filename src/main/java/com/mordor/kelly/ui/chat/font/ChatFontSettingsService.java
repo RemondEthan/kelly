@@ -24,6 +24,8 @@ public final class ChatFontSettingsService {
     /** Preferences 存储键：字体族名称 */
     private static final String KEY_FAMILY = "chat.font.family";
     /** Preferences 存储键：缩放等级枚举名 */
+    private static final String KEY_COLOR = "chat.font.color";
+
     private static final String KEY_SCALE = "chat.font.scale";
 
     /** Java Preferences 存储后端 */
@@ -62,7 +64,7 @@ public final class ChatFontSettingsService {
         }
         return new ChatFontSettings(
                 (family == null || family.isBlank()) ? null : family,
-                scale);
+                scale, prefs.get(KEY_COLOR, null));
     }
 
     /**
@@ -75,6 +77,11 @@ public final class ChatFontSettingsService {
             prefs.remove(KEY_FAMILY);  // null 则删除键
         } else {
             prefs.put(KEY_FAMILY, s.fontFamily());
+        }
+        if (s.fontColor() == null) {
+            prefs.remove(KEY_COLOR);
+        } else {
+            prefs.put(KEY_COLOR, s.fontColor());
         }
         prefs.put(KEY_SCALE, s.scale().name());  // 存储枚举名
     }

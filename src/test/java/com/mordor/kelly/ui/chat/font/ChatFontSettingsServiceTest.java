@@ -28,6 +28,18 @@ class ChatFontSettingsServiceTest {
     }
 
     @Test
+    void colorPersistsAndCanFollowThemeAgain() {
+        Preferences prefs = inMemoryPrefs();
+        ChatFontSettingsService service = new ChatFontSettingsService(prefs);
+        service.save(new ChatFontSettings(null, ChatFontScale.MEDIUM, "#287ABC"));
+        assertEquals("#287ABC", service.load().fontColor());
+        service.save(ChatFontSettings.defaults());
+        assertNull(service.load().fontColor());
+        prefs.put("chat.font.color", "invalid;color");
+        assertNull(service.load().fontColor());
+    }
+
+    @Test
     void load_emptyPrefs_returnsDefaults() {
         ChatFontSettingsService svc = new ChatFontSettingsService(inMemoryPrefs());
         ChatFontSettings s = svc.load();

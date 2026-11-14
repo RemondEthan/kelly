@@ -15,8 +15,20 @@ package com.mordor.kelly.ui.chat.font;
  *
  * @param fontFamily 字体族名称，可为 null（使用系统默认）
  * @param scale      字体缩放等级
+ * @param fontColor  RGB 颜色（#RRGGBB），null 表示跟随主题
  */
-public record ChatFontSettings(String fontFamily, ChatFontScale scale) {
+public record ChatFontSettings(String fontFamily, ChatFontScale scale, String fontColor) {
+
+    public ChatFontSettings {
+        // 仅允许不透明 RGB，避免无效偏好或 CSS 注入。
+        if (fontColor != null && !fontColor.matches("#[0-9a-fA-F]{6}")) {
+            fontColor = null;
+        }
+    }
+
+    public ChatFontSettings(String fontFamily, ChatFontScale scale) {
+        this(fontFamily, scale, null);
+    }
 
     /**
      * 返回默认字体设置：使用系统默认字体族，中号缩放。

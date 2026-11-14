@@ -25,6 +25,39 @@ class ChatFontApplierTest {
     // JavaFX is process-scoped; do not exit it between test classes.
 
     @Test
+    void colorAppliesToNewMessagesAndResetsInBothThemes() throws Exception {
+        java.util.concurrent.CompletableFuture<Void> result = new java.util.concurrent.CompletableFuture<>();
+        Platform.runLater(() -> {
+            try {
+                for (var theme : com.mordor.kelly.ui.theme.AppTheme.values()) {
+                    VBox chat = new VBox();
+                    chat.getStyleClass().add("chat-root");
+                    VBox root = new VBox(chat);
+                    com.mordor.kelly.ui.theme.ThemeService.apply(root, theme);
+                    new javafx.scene.Scene(root);
+                    ChatFontApplier.apply(chat, new ChatFontSettings(null, ChatFontScale.MEDIUM, "#287ABC"));
+                    Text message = new Text("new message");
+                    javafx.scene.text.TextFlow flow = new javafx.scene.text.TextFlow(message);
+                    flow.getStyleClass().addAll("selectable-text-flow", "bubble-peer");
+                    TextField input = new TextField("input");
+                    chat.getChildren().addAll(flow, input);
+                    root.applyCss();
+                    assertEquals(javafx.scene.paint.Color.web("#287ABC"), message.getFill());
+                    Text inputText = (Text) input.lookup(".text");
+                    assertEquals(javafx.scene.paint.Color.web("#287ABC"), inputText.getFill());
+                    ChatFontApplier.apply(chat, ChatFontSettings.defaults());
+                    root.applyCss();
+                    assertNotEquals(javafx.scene.paint.Color.web("#287ABC"), message.getFill());
+                }
+                result.complete(null);
+            } catch (Throwable failure) {
+                result.completeExceptionally(failure);
+            }
+        });
+        result.get(20, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    @Test
     void nullFamily_doesNotInjectFontFamilyStyle() {
         VBox root = new VBox(new Label("a"));
         ChatFontApplier.apply(root, new ChatFontSettings(null, ChatFontScale.MEDIUM));

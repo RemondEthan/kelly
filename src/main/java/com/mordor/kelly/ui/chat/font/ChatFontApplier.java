@@ -43,11 +43,24 @@ public final class ChatFontApplier {
         if (root == null || s == null) {
             return;
         }
-        // 字体族设在根节点，子节点通过 CSS 继承自动生效
-        if (s.fontFamily() != null) {
-            String escaped = s.fontFamily().replace("'", "''");
-            root.setStyle("-fx-font-family: '" + escaped + "'");
+        // 根节点颜色变量和样式类可作用于后续动态加入的消息，无需额外遍历。
+        String sheet = ChatFontApplier.class.getResource("font-color.css").toExternalForm();
+        if (root instanceof Parent parent && !parent.getStylesheets().contains(sheet)) {
+            parent.getStylesheets().add(sheet);
         }
+        String style = root.getStyle()
+                .replaceAll("-kelly-font-color\\s*:[^;]*;?", "")
+                .replaceAll("-fx-font-family\\s*:[^;]*;?", "");
+        if (s.fontFamily() != null) {
+            String escaped = s.fontFamily().replace("'", "\\'");
+            style += ";-fx-font-family: '" + escaped + "';";
+        }
+        root.getStyleClass().remove("chat-font-color");
+        if (s.fontColor() != null) {
+            style += ";-kelly-font-color: " + s.fontColor() + ";";
+            root.getStyleClass().add("chat-font-color");
+        }
+        root.setStyle(style);
         // 递归遍历并缩放所有文本节点的字号
         walk(root, s.scale().factor());
     }

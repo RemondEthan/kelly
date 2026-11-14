@@ -4,10 +4,16 @@ import com.mordor.kelly.ui.theme.ThemeService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.event.EventDispatcher;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ColorPicker;
+import javafx.scene.paint.Color;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ToggleGroup;
@@ -53,6 +59,11 @@ public final class FontSettingsDialog {
                             ChatFontSettings current,
                             Node chatRoot,
                             ChatFontSettingsService service) {
+        createDialog(owner, current, chatRoot, service).showAndWait();
+    }
+
+    static Stage createDialog(Stage owner, ChatFontSettings current, Node chatRoot,
+                              ChatFontSettingsService service) {
         // 创建新的 Stage 作为对话框
         Stage dialog = new Stage();
         dialog.setTitle("字体设置");
@@ -86,6 +97,13 @@ public final class FontSettingsDialog {
         RadioButton xlarge = radio("特大", ChatFontScale.XLARGE, group, current.scale());
         HBox sizeRow = new HBox(12, small, medium, large, xlarge);
 
+        CheckBox followTheme = new CheckBox("跟随主题");
+        followTheme.setSelected(current.fontColor() == null);
+        ColorPicker colorPicker = new ColorPicker(current.fontColor() == null
+                ? Color.BLACK : Color.web(current.fontColor()));
+        colorPicker.disableProperty().bind(followTheme.selectedProperty());
+        HBox colorRow = new HBox(12, followTheme, colorPicker);
+
         // 按钮行
         Button apply = new Button("应用");
         Button cancel = new Button("取消");
@@ -96,6 +114,7 @@ public final class FontSettingsDialog {
         VBox root = new VBox(10,
                 labelled("字体：", fontBox),
                 labelled("字号：", sizeRow),
+                labelled("颜色：", colorRow),
                 buttons);
         root.setPadding(new Insets(14));
         // 字体对话框是独立 Scene：单独装载色板并套用当前主题
@@ -105,25 +124,42 @@ public final class FontSettingsDialog {
         apply.setOnAction(e -> {
             String family = fontBox.getValue();
             ChatFontScale scale = (ChatFontScale) group.getSelectedToggle().getUserData();
-            ChatFontSettings next = new ChatFontSettings(family, scale);
+            ChatFontSettings next = new ChatFontSettings(family, scale, followTheme.isSelected() ? null
+                    : String.format(java.util.Locale.ROOT, "#%02X%02X%02X",
+                            Math.round(colorPicker.getValue().getRed() * 255),
+                            Math.round(colorPicker.getValue().getGreen() * 255),
+                            Math.round(colorPicker.getValue().getBlue() * 255)));
             service.save(next);            // 持久化
             ChatFontApplier.apply(chatRoot, next);  // 立即应用到 UI
             dialog.close();
         });
         cancel.setOnAction(e -> dialog.close());
-        apply.setDefaultButton(true);  // 回车键触发应用
+        // 选择器使用回车确认颜色/字体，不能让同一个按键顺便保存并关闭窗口。
+        // 应用按钮获得焦点后仍可通过空格触发。
 
-        // 创建 Scene 并设置 ESC 键关闭
         Scene scene = new Scene(root);
-        scene.setOnKeyPressed(e -> {
-            if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
-                dialog.close();
+        // Window 的事件分发器先于 PopupWindow 的 Esc 自动收起逻辑运行。
+        // 持续的 KEY_PRESSED（例如 XWayland 丢失松键后重复输入）不能取消面板；
+        // 仅在收到真实的松键事件时取消一次，避免色板和字体列表刚展开就被关闭。
+        EventDispatcher dispatcher = dialog.getEventDispatcher();
+        dialog.setEventDispatcher((event, tail) -> {
+            if (event instanceof KeyEvent key && key.getCode() == KeyCode.ESCAPE) {
+                if (key.getEventType() == KeyEvent.KEY_RELEASED) {
+                    if (colorPicker.isShowing()) {
+                        colorPicker.hide();
+                    } else if (fontBox.isShowing()) {
+                        fontBox.hide();
+                    }
+                }
+                key.consume();
+                return null;
             }
+            return dispatcher.dispatchEvent(event, tail);
         });
         dialog.setScene(scene);
         dialog.setWidth(420);
-        dialog.setHeight(220);
-        dialog.showAndWait();  // 阻塞等待用户操作
+        dialog.sizeToScene();
+        return dialog;
     }
 
     /**

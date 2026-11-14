@@ -1,0 +1,12 @@
+/* 高于主题正文规则；动态消息继承同一颜色变量。链接保留主题颜色。 */
+.chat-root.chat-font-color .selectable-text-flow Text,
+.theme-root.theme-dark .chat-root.chat-font-color .selectable-text-flow Text {
+    -fx-fill: -kelly-font-color;
+}
+.chat-root.chat-font-color .text-input {
+    -fx-text-fill: -kelly-font-color;
+}
+.chat-root.chat-font-color .selectable-text-flow Text.md-link,
+.theme-root.theme-dark .chat-root.chat-font-color .selectable-text-flow Text.md-link {
+    -fx-fill: -color-link;
+}
