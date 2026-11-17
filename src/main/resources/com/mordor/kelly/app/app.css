@@ -14,6 +14,30 @@
     -fx-background-color: -color-bg-app;
 }
 
+/* 窗口按钮：最小化 / 关闭（取代系统标题栏，登录页 / 聊天页通用） */
+.window-buttons {
+    -fx-spacing: 2;
+}
+
+.window-button {
+    -fx-text-fill: -color-text-secondary;
+    -fx-font-size: 13px;
+    -fx-padding: 1 8 1 8;
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-cursor: hand;
+}
+
+.window-button:hover {
+    -fx-background-color: -color-primary-soft;
+    -fx-text-fill: -color-text-primary;
+}
+
+.window-close-button:hover {
+    -fx-background-color: #E81123;
+    -fx-text-fill: #FFFFFF;
+}
+
 /* 主题切换按钮（登录页 / 聊天页通用） */
 .theme-toggle {
     -fx-background-color: -color-surface-alt;

@@ -12,6 +12,7 @@ import java.awt.SystemTray;
 import java.awt.TrayIcon;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.function.Supplier;
 
 /**
  * 系统托盘管理器——封装 AWT SystemTray 操作。
@@ -59,14 +60,15 @@ public final class TrayManager {
      * <p>此方法立即返回，实际的托盘注册异步完成（SNI 在调用线程，
      * AWT 在 AWT 线程）。调用方可安全地在 JavaFX 线程中调用而不会阻塞 UI。
      *
-     * @param stage 主窗口 Stage，双击托盘图标时恢复窗口
+     * @param stageSupplier 当前主窗口的提供者：登录页与聊天页是两个窗口，
+     *                      托盘图标要能恢复「此刻该显示的那个」
      * @return 托盘管理器实例，即使安装失败也会返回（tray/icon 为 null）
      */
-    public static TrayManager install(Stage stage) {
+    public static TrayManager install(Supplier<Stage> stageSupplier) {
         TrayManager tm = new TrayManager();
-        tm.sni = SniTray.install(stage, () -> tm.onQuit);
+        tm.sni = SniTray.install(stageSupplier, () -> tm.onQuit);
         if (tm.sni == null) {
-            AwtSupport.run(() -> tm.attach(stage));
+            AwtSupport.run(() -> tm.attach(stageSupplier));
         }
         return tm;
     }
@@ -82,9 +84,9 @@ public final class TrayManager {
      *   <li>添加到系统托盘</li>
      * </ol>
      *
-     * @param stage 主窗口 Stage
+     * @param stageSupplier 当前主窗口的提供者
      */
-    private void attach(Stage stage) {
+    private void attach(Supplier<Stage> stageSupplier) {
         if (!SystemTray.isSupported()) {
             System.out.println("[Tray] 当前系统不支持托盘图标,跳过");
             return;
@@ -105,10 +107,10 @@ public final class TrayManager {
             TrayIcon trayIcon = new TrayIcon(image, "Kelly");
             trayIcon.setImageAutoSize(true);
             // 双击托盘图标恢复窗口
-            trayIcon.addActionListener(e -> FxStageSupport.show(stage));
+            trayIcon.addActionListener(e -> FxStageSupport.show(stageSupplier.get()));
             systemTray.add(trayIcon);
             // 设置右键上下文菜单
-            trayIcon.setPopupMenu(buildMenu(stage));
+            trayIcon.setPopupMenu(buildMenu(stageSupplier));
             this.icon = trayIcon;
             this.tray = systemTray;
         } catch (AWTException e) {
@@ -197,19 +199,19 @@ public final class TrayManager {
      * pom.xml 的 win profile 已加 -Dfile.encoding=GBK 兜底。
      * 英文/日文等其他代码页区域仍会乱码，根治需用 JNA 走 AppendMenuW。
      *
-     * @param stage 主窗口 Stage
+     * @param stageSupplier 当前主窗口的提供者
      * @return 包含菜单项的 PopupMenu
      */
-    private PopupMenu buildMenu(Stage stage) {
+    private PopupMenu buildMenu(Supplier<Stage> stageSupplier) {
         PopupMenu menu = new PopupMenu();
 
         // "打开 Kelly"：恢复窗口到前台
         MenuItem openItem = new MenuItem("打开 Kelly");
-        openItem.addActionListener(e -> FxStageSupport.show(stage));
+        openItem.addActionListener(e -> FxStageSupport.show(stageSupplier.get()));
 
         // "隐藏窗口"：将窗口最小化到托盘
         MenuItem hideItem = new MenuItem("隐藏窗口");
-        hideItem.addActionListener(e -> FxStageSupport.hide(stage));
+        hideItem.addActionListener(e -> FxStageSupport.hide(stageSupplier.get()));
 
         // "退出"：触发完整的退出流程
         MenuItem quitItem = new MenuItem("退出");

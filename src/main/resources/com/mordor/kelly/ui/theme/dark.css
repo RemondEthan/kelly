@@ -60,7 +60,8 @@
     -color-code-inline-bg: rgba(255, 255, 255, 0.10);
 
     /* ── 半透明玻璃层 ─────────────────────────────────────── */
-    -color-header-bg:      rgba(30, 34, 42, 0.55);
+    /* 顶栏与应用底色同色（略微透明，露出一点壁纸质感） */
+    -color-header-bg:      rgba(21, 24, 29, 0.92);
     -color-member-bg:      rgba(30, 34, 42, 0.68);
     -color-input-bg:       rgba(26, 30, 37, 0.88);
     -color-border-glass:   rgba(255, 255, 255, 0.10);

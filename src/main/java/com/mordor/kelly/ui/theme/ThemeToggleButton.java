@@ -54,7 +54,8 @@ public class ThemeToggleButton extends Button {
         Node root = scene.getRoot();
         AppTheme next = ThemeService.currentOf(root).toggled();
         service.save(next);
-        ThemeService.apply(root, next);
+        // 登录页和聊天页是两个窗口，一起换色
+        ThemeService.applyToAll(root, next);
         updateLabel(next);
     }
 

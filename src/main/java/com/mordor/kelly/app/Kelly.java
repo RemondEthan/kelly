@@ -11,6 +11,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
@@ -43,9 +44,12 @@ public class Kelly extends Application {
     /** 登录页和聊天页共用的窗口默认高度（像素），较原来的 680px 降低 20%。 */
     private static final double HEIGHT = 544;
 
-    /** JavaFX 主窗口，应用生命周期内只有一个实例 */
-    private Stage stage;
-    /** 根容器，用于在登录页和聊天页之间切换 */
+    /** 登录页窗口：保留系统装饰（原生标题栏、关闭按钮） */
+    private Stage loginStage;
+    private NormalWindowBounds loginBounds;
+    /** 聊天页窗口：无边框 + 圆角，标题栏由应用自绘 */
+    private Stage chatStage;
+    /** 登录页的场景根容器 */
     private StackPane root;
     /** 当前的即时通讯客户端连接，登录成功后创建，退出时关闭 */
     private ImClient session;
@@ -53,6 +57,10 @@ public class Kelly extends Application {
     private UnreadAlert unreadAlert;
     /** 当前的聊天面板，登出时需要手动关闭 */
     private ChatPane chatPane;
+    /** 系统托盘管理器 */
+    private TrayManager trayManager;
+    /** 退出管理器 */
+    private QuitManager quitManager;
 
     /**
      * JavaFX 应用程序的生命周期入口方法。
@@ -64,11 +72,13 @@ public class Kelly extends Application {
      */
     @Override
     public void start(Stage stage) {
-        this.stage = stage;
+        // 登录页保持系统原生装饰：标题栏、关闭按钮都由桌面环境绘制
+        this.loginStage = stage;
         this.root = new StackPane();
         root.getStyleClass().add("app-bg");
         // 主题：装载色板样式表，并应用上次选择的主题（亮色 / 深色）
         ThemeService.apply(root, new ThemeService().load());
+        ThemeService.registerRoot(root);
 
         // 预加载 Ikonli Material Design 字体，避免 Windows 上字体加载失败导致图标乱码
         Font.loadFont(getClass().getResourceAsStream(
@@ -81,47 +91,47 @@ public class Kelly extends Application {
         scene.getStylesheets().add(
                 Kelly.class.getResource("app.css").toExternalForm());
 
-        stage.setTitle("kelly");
+        loginStage.setTitle("kelly");
         // 设置窗口标题栏图标（多尺寸，适配 macOS Retina 和 Windows 任务栏）
-        AppIcons.applyStage(stage, "/icons/kelly.png");
-        stage.setScene(scene);
-        stage.setMinWidth(560);
-        stage.setMinHeight(360);
+        AppIcons.applyStage(loginStage, "/icons/kelly.png");
+        loginStage.setScene(scene);
+        loginStage.setMinWidth(560);
+        loginStage.setMinHeight(360);
         // 阻止关闭最后一个窗口时 JVM 自动退出——本应用要靠系统托盘常驻后台
         Platform.setImplicitExit(false);
 
         // 单实例检查：如果端口已被占用，说明已有实例在运行
         // 向已有实例发送唤醒信号，本进程退出
-        if (!SingleInstance.claim(() -> FxStageSupport.show(stage))) {
+        if (!SingleInstance.claim(() -> FxStageSupport.show(activeStage()))) {
             Platform.exit();
             return;
         }
 
-        stage.show();
+        loginStage.show();
+        loginBounds = new NormalWindowBounds(loginStage);
         // 启动 JavaFX 线程监控，检测 UI 线程是否卡死
         Diagnostics.startFxWatchdog();
 
         // 初始化系统托盘（AWT），图标加载和菜单创建在 AWT 线程完成
-        TrayManager trayManager = TrayManager.install(stage);
+        // 托盘恢复的窗口取决于当前处于登录页还是聊天页
+        trayManager = TrayManager.install(this::activeStage);
         // 设置 Windows 任务栏图标
         AppIcons.applyTaskbar(AppIcons.awtImage("/icons/kelly.png"));
-        // 初始化未读消息提醒（监听窗口焦点、最小化状态，触发图标闪烁）
-        unreadAlert = UnreadAlert.install(stage, trayManager);
         // 退出管理器：负责先关闭会话再强制终止 JVM 进程
-        QuitManager quitManager = new QuitManager(trayManager, this::closeSession);
+        quitManager = new QuitManager(trayManager, this::closeSession);
 
         // 托盘右键菜单的"退出"按钮触发退出流程
         trayManager.setOnQuit(quitManager::quit);
         // 注册快捷键：Cmd+W / Ctrl+W 最小化，Cmd+Q / Ctrl+Q 退出
-        ShortcutRegistrar.register(scene, () -> FxStageSupport.minimize(stage), quitManager::quit);
+        ShortcutRegistrar.register(scene, () -> FxStageSupport.minimize(loginStage), quitManager::quit);
         // 点击窗口关闭按钮时：消费事件，只隐藏窗口不退出（红点功能依赖窗口隐藏）
         // Cmd+W 走快捷键最小化；会话保持连接，点 Dock 图标可恢复聊天窗口
-        stage.setOnCloseRequest(e -> {
+        loginStage.setOnCloseRequest(e -> {
             e.consume();
-            FxStageSupport.hide(stage);
+            FxStageSupport.hide(loginStage);
         });
         // 注册 macOS 系统级退出事件（Glass 层 ⌘Q、Desktop APP_QUIT_HANDLER）和 Dock 点击事件
-        OsQuitHandlers.install(quitManager::quit, () -> FxStageSupport.show(stage));
+        OsQuitHandlers.install(quitManager::quit, () -> FxStageSupport.show(activeStage()));
     }
 
     /**
@@ -130,19 +140,23 @@ public class Kelly extends Application {
      * LoginPane 的回调 {@code enterChat} 在登录成功后被调用。
      */
     private void showLogin() {
-        stage.setTitle("kelly");
+        loginStage.setTitle("kelly");
         root.getChildren().setAll(new LoginPane(this::enterChat));
     }
 
     /**
      * 登录成功后切换到聊天页面。
      *
+     * <p>登录页和聊天页是两个窗口：登录页保留系统原生标题栏，
+     * 聊天页换成无边框圆角窗口（标题栏由 {@link ChatHeader} 自绘）。
+     * 切换时新窗口沿用登录窗口的位置，看起来像同一个窗口换了副标题栏。</p>
+     *
      * <p>流程：
      * <ol>
      *   <li>先关闭之前的会话（如果有）</li>
      *   <li>保存新的客户端连接，注册未读消息监听</li>
-     *   <li>更新窗口标题为用户名</li>
-     *   <li>创建 {@link ChatPane} 并替换根容器内容</li>
+     *   <li>创建 {@link ChatPane}，装进新的无边框窗口</li>
+     *   <li>隐藏登录窗口，显示聊天窗口</li>
      * </ol>
      *
      * @param state 登录后的应用状态，包含用户名和 IM 客户端连接
@@ -151,11 +165,66 @@ public class Kelly extends Application {
         closeSession();
         if (state.client() != null) {
             session = state.client();
+        }
+
+        // 聊天页场景：独立根容器 + 圆角裁剪
+        chatPane = new ChatPane(state);
+        StackPane chatRoot = new StackPane();
+        chatRoot.getStyleClass().add("app-bg");
+        ThemeService.apply(chatRoot, new ThemeService().load());
+        ThemeService.registerRoot(chatRoot);
+        chatRoot.getChildren().setAll(chatPane);
+
+        var normalBounds = loginBounds.get();
+        Scene chatScene = new Scene(chatRoot, normalBounds.width(), normalBounds.height());
+        // 透明填充：让根节点的圆角裁剪透出桌面
+        chatScene.setFill(Color.TRANSPARENT);
+        chatScene.getStylesheets().add(
+                Kelly.class.getResource("app.css").toExternalForm());
+        WindowFrame.applyRoundedClip(chatRoot);
+
+        // 无边框圆角窗口
+        chatStage = new Stage();
+        WindowFrame.apply(chatStage);
+        chatStage.setScene(chatScene);
+        chatStage.setTitle(state.username());
+        AppIcons.applyStage(chatStage, "/icons/kelly.png");
+        chatStage.setMinWidth(560);
+        chatStage.setMinHeight(360);
+        WindowFrame.makeResizable(chatStage, chatScene);
+        chatStage.setOnCloseRequest(e -> {
+            e.consume();
+            FxStageSupport.hide(chatStage);
+        });
+        ShortcutRegistrar.register(chatScene,
+                () -> FxStageSupport.minimize(chatStage), quitManager::quit);
+
+        // 未读消息提醒改用聊天窗口
+        unreadAlert = UnreadAlert.install(chatStage, trayManager);
+        if (session != null) {
             unreadAlert.watch(session);
         }
-        stage.setTitle(state.username());
-        chatPane = new ChatPane(state);
-        root.getChildren().setAll(chatPane);
+
+        // 新窗口沿用登录窗口位置，切换时视觉上连续
+        chatStage.setX(normalBounds.x());
+        chatStage.setY(normalBounds.y());
+        boolean maximized = loginStage.isMaximized();
+        loginStage.hide();
+        chatStage.show();
+        chatStage.setMaximized(maximized);
+        chatStage.requestFocus();
+    }
+
+    /**
+     * 当前应该被「显示 / 恢复」的主窗口。
+     *
+     * <p>登录成功后聊天窗口接管；登录之前是登录窗口。
+     * 托盘图标、单实例唤醒、系统事件都通过它找到正确的窗口。</p>
+     *
+     * @return 当前主窗口
+     */
+    private Stage activeStage() {
+        return chatStage != null ? chatStage : loginStage;
     }
 
     /**

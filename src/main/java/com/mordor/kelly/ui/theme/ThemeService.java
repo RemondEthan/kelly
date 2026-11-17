@@ -6,6 +6,8 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 
 import java.net.URL;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.prefs.Preferences;
 
 /**
@@ -42,6 +44,9 @@ public final class ThemeService {
 
     /** Preferences 存储键：主题枚举名 */
     private static final String KEY_THEME = "ui.theme";
+
+    /** 已登记的主窗口根节点：主题切换时一起换色（登录页 + 聊天页） */
+    private static final List<Node> themedRoots = new CopyOnWriteArrayList<>();
 
     /** Java Preferences 存储后端 */
     private final Preferences prefs;
@@ -128,6 +133,37 @@ public final class ThemeService {
             }
         } else {
             root.getStyleClass().remove(DARK_STYLE_CLASS);
+        }
+    }
+
+    /**
+     * 登记一个需要跟随主题的主窗口根节点。
+     *
+     * <p>应用有登录页和聊天页两个窗口，主题切换时两者要一起变，
+     * 否则隐藏的那个窗口会停留在旧主题上。</p>
+     *
+     * @param root 主窗口的场景根节点
+     */
+    public static void registerRoot(Node root) {
+        if (!themedRoots.contains(root)) {
+            themedRoots.add(root);
+        }
+    }
+
+    /**
+     * 把主题应用到所有已登记的主窗口根节点（外加当前节点）。
+     *
+     * <p>主题切换按钮调用它，保证两个窗口同步换色。</p>
+     *
+     * @param current 当前触发切换的根节点
+     * @param theme   要应用的主题
+     */
+    public static void applyToAll(Node current, AppTheme theme) {
+        apply(current, theme);
+        for (Node root : themedRoots) {
+            if (root != current) {
+                apply(root, theme);
+            }
         }
     }
 

@@ -320,7 +320,7 @@
                                 <argument>--module-path</argument>
                                 <argument>${java.home}/jmods${path.separator}${project.build.directory}/javafx-mods</argument>
                                 <argument>--add-modules</argument>
-                                <argument>java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.scripting,java.security.jgss,java.sql,java.xml,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.httpserver,jdk.localedata,jdk.management,jdk.net,jdk.unsupported,jdk.xml.dom,jdk.zipfs,javafx.base,javafx.controls,javafx.fxml,javafx.graphics,javafx.media,javafx.swing,javafx.web</argument>
+                                <argument>java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.scripting,java.security.jgss,java.sql,java.xml,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.httpserver,jdk.localedata,jdk.management,jdk.net,jdk.security.auth,jdk.unsupported,jdk.xml.dom,jdk.zipfs,javafx.base,javafx.controls,javafx.fxml,javafx.graphics,javafx.media,javafx.swing,javafx.web</argument>
                                 <argument>--strip-debug</argument>
                                 <argument>--no-header-files</argument>
                                 <argument>--no-man-pages</argument>

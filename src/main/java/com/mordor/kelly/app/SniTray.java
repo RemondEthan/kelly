@@ -2,9 +2,9 @@ package com.mordor.kelly.app;
 
 import javafx.stage.Stage;
 
-import org.freedesktop.dbus.ObjectPath;
+import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.Struct;
-import org.freedesktop.dbus.annotations.DBusBoundProperty;
+import org.freedesktop.dbus.Tuple;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
 import org.freedesktop.dbus.annotations.Position;
 import org.freedesktop.dbus.connections.impl.DBusConnection;
@@ -12,6 +12,7 @@ import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 import org.freedesktop.dbus.exceptions.DBusException;
 import org.freedesktop.dbus.interfaces.DBus;
 import org.freedesktop.dbus.interfaces.DBusInterface;
+import org.freedesktop.dbus.messages.DBusSignal;
 import org.freedesktop.dbus.interfaces.Properties;
 import org.freedesktop.dbus.interfaces.Properties.PropertiesChanged;
 import org.freedesktop.dbus.types.UInt32;
@@ -49,7 +50,7 @@ import java.util.function.Supplier;
  *
  * <p>闪烁：UnreadAlert 的 BlinkTimer 每 500ms 调 {@link #setIconImage}，
  * 这里按传入 AWT Image 的身份缓存已编码像素（正常/提醒各一份），
- * 更新后发 PropertiesChanged(IconPixmap)，面板立刻换图。
+ * 更新后发 PropertiesChanged(IconPixmap) 和 SNI NewIcon，兼容不同面板的刷新方式。
  *
  * <p>退出清理：进程 halt 后总线名字消失，扩展会自动移除图标，
  * 无需显式反注册（QuitManager 的 AWT 清理路径在 SNI 模式下本来就跳过）。
@@ -69,8 +70,8 @@ final class SniTray {
 
     /** D-Bus 会话连接，install 成功后非空 */
     private final DBusConnection bus;
-    /** 恢复窗口用 */
-    private final Stage stage;
+    /** 恢复窗口用：当前主窗口的提供者（登录页 / 聊天页是两个窗口） */
+    private final Supplier<Stage> stageSupplier;
     /** 托盘菜单"退出"，由 TrayManager 转发 QuitManager 回调 */
     private final Supplier<Runnable> onQuit;
     /** 已导出的属性对象（保留引用防止 GC，dbus-java 导出表是弱引用） */
@@ -80,25 +81,25 @@ final class SniTray {
     /** Image 身份 → 编码好的多尺寸像素，UnreadAlert 固定交替两张图，命中后零分配 */
     private final Map<java.awt.Image, List<SniPixmap>> encodeCache = new ConcurrentHashMap<>();
 
-    private SniTray(DBusConnection bus, Stage stage, Supplier<Runnable> onQuit) {
+    private SniTray(DBusConnection bus, Supplier<Stage> stageSupplier, Supplier<Runnable> onQuit) {
         this.bus = bus;
-        this.stage = stage;
+        this.stageSupplier = stageSupplier;
         this.onQuit = onQuit;
-        this.item = new Item(bus, stage, loadPixmaps("/icons/kelly.png"));
+        this.item = new Item(bus, stageSupplier, loadPixmaps("/icons/kelly.png"));
         this.menu = new Menu(
-                () -> FxStageSupport.show(stage),
-                () -> FxStageSupport.hide(stage),
+                () -> FxStageSupport.show(stageSupplier.get()),
+                () -> FxStageSupport.hide(stageSupplier.get()),
                 () -> onQuit.get().run());
     }
 
     /**
      * 连接总线并注册 SNI。任何一步失败都返回 null，调用方回退 AWT 后端。
      *
-     * @param stage  主窗口，菜单"打开/隐藏"用
+     * @param stageSupplier 当前主窗口的提供者，菜单"打开/隐藏"用
      * @param onQuit 菜单"退出"回调供应商（TrayManager.onQuit 可能稍后才被 set）
      * @return 后端实例；无会话总线 / 无 watcher / 注册失败时为 null
      */
-    static SniTray install(Stage stage, Supplier<Runnable> onQuit) {
+    static SniTray install(Supplier<Stage> stageSupplier, Supplier<Runnable> onQuit) {
         if (!System.getProperty("os.name", "").toLowerCase().contains("linux")) {
             return null;
         }
@@ -119,7 +120,7 @@ final class SniTray {
                 bus.disconnect();
                 return null;
             }
-            SniTray tray = new SniTray(bus, stage, onQuit);
+            SniTray tray = new SniTray(bus, stageSupplier, onQuit);
             bus.exportObject(ITEM_PATH, tray.item);
             bus.exportObject(MENU_PATH, tray.menu);
             Watcher watcher = bus.getRemoteObject(WATCHER_NAME, "/StatusNotifierWatcher", Watcher.class, false);
@@ -183,6 +184,13 @@ final class SniTray {
         void SecondaryActivate(int x, int y);
 
         void Scroll(int delta, String orientation);
+
+        /** SNI 标准图标变更信号：通知面板重新读取 IconPixmap。 */
+        final class NewIcon extends DBusSignal {
+            public NewIcon(String path) throws DBusException {
+                super(path);
+            }
+        }
     }
 
     /** org.kde.StatusNotifierWatcher，仅需注册方法 */
@@ -195,12 +203,10 @@ final class SniTray {
     @DBusInterfaceName("com.canonical.dbusmenu")
     public interface MenuIface extends DBusInterface {
         /**
-         * 返回 (版本 u, 节点 (ia{sv}av))。
-         * 注意：dbus-java 会把直接返回的 Struct 拆成多个返回参数
-         * （u 与 (ia{sv}av)），但 D-Bus 线路上字节布局与单个结构体
-         * "(u(ia{sv}av))" 完全一致，客户端按规范签名解析不受影响。
+         * 返回两个顶层参数：版本 u 和菜单节点 (ia{sv}av)。
+         * 必须使用 Tuple；Struct 会在线路上多包一层，Qt 菜单客户端无法解析。
          */
-        MenuLayout GetLayout(int parentId, int recursionDepth, String[] propertyNames);
+        MenuLayout<UInt32, MenuNode> GetLayout(int parentId, int recursionDepth, String[] propertyNames);
 
         /** 批量取节点属性，返回 a(ia{sv})；ids 为空表示全部 */
         List<ItemProps> GetGroupProperties(int[] ids, String[] propertyNames);
@@ -229,13 +235,13 @@ final class SniTray {
     }
 
     /** GetLayout 返回 (u (ia{sv}av)) */
-    public static final class MenuLayout extends Struct {
+    public static final class MenuLayout<R, N> extends Tuple {
         @Position(0)
-        public final UInt32 revision;
+        public final R revision;
         @Position(1)
-        public final MenuNode root;
+        public final N root;
 
-        public MenuLayout(UInt32 revision, MenuNode root) {
+        public MenuLayout(R revision, N root) {
             this.revision = revision;
             this.root = root;
         }
@@ -287,22 +293,28 @@ final class SniTray {
 
         private volatile List<SniPixmap> pixmaps;
         private final DBusConnection bus;
-        private final Stage stage;
+        private final Supplier<Stage> stageSupplier;
 
-        Item(DBusConnection bus, Stage stage, List<SniPixmap> initial) {
+        Item(DBusConnection bus, Supplier<Stage> stageSupplier, List<SniPixmap> initial) {
             this.bus = bus;
-            this.stage = stage;
+            this.stageSupplier = stageSupplier;
             this.pixmaps = initial;
         }
 
         void updatePixmaps(List<SniPixmap> fresh) {
             this.pixmaps = fresh;
             try {
-                // 网络层立刻推送，面板免轮询换图
+                // 保留属性通知，兼容依赖 PropertiesChanged 的面板
                 bus.sendMessage(new PropertiesChanged(ITEM_PATH, ITEM_IFACE,
                         Map.of("IconPixmap", new Variant<>(fresh, "a(iiay)")), List.of()));
             } catch (DBusException e) {
                 System.err.println("[Tray] PropertiesChanged 发送失败: " + e.getMessage());
+            }
+            try {
+                // 独立发送，属性通知失败时仍尝试标准 SNI 刷新信号。
+                bus.sendMessage(new ItemIface.NewIcon(ITEM_PATH));
+            } catch (DBusException e) {
+                System.err.println("[Tray] NewIcon 发送失败: " + e.getMessage());
             }
         }
 
@@ -318,7 +330,8 @@ final class SniTray {
                 return null;
             }
             Variant<?> v = properties().get(propertyName);
-            return v == null ? null : (A) v.getValue();
+            // 保留显式 D-Bus 签名，尤其是 a(iiay) 和空数组。
+            return (A) v;
         }
 
         @Override
@@ -341,19 +354,19 @@ final class SniTray {
             m.put("OverlayIconName", new Variant<>(""));
             m.put("OverlayIconPixmap", new Variant<>(List.of(), "a(iiay)"));
             m.put("ToolTip", new Variant<>(new SniToolTip("", List.of(), "Kelly", ""), "(sa(iiay)ss)"));
-            m.put("Menu", new Variant<>(new ObjectPath(bus.getUniqueName(), MENU_PATH)));
+            m.put("Menu", new Variant<>(new DBusPath(MENU_PATH)));
             m.put("ItemIsMenu", new Variant<>(true));
             return m;
         }
 
         @Override
         public void Activate(int x, int y) {
-            FxStageSupport.show(stage);
+            FxStageSupport.show(stageSupplier.get());
         }
 
         @Override
         public void SecondaryActivate(int x, int y) {
-            FxStageSupport.show(stage);
+            FxStageSupport.show(stageSupplier.get());
         }
 
         @Override
@@ -371,7 +384,7 @@ final class SniTray {
      * /MenuBar：静态三项目菜单，与 AWT 托盘菜单一致。
      * 布局固定（revision 1），客户端 AboutToShow 恒 false 即可。
      */
-    public static final class Menu implements MenuIface {
+    public static final class Menu implements MenuIface, Properties {
 
         static final int ROOT = 0;
         static final int OPEN = 1;
@@ -431,9 +444,32 @@ final class SniTray {
         }
 
         @Override
-        public MenuLayout GetLayout(int parentId, int recursionDepth, String[] propertyNames) {
+        public Map<String, Variant<?>> GetAll(String interfaceName) {
+            if (!"com.canonical.dbusmenu".equals(interfaceName)) {
+                return Map.of();
+            }
+            return Map.of(
+                    "Version", new Variant<>(new UInt32(3)),
+                    "TextDirection", new Variant<>("ltr"),
+                    "Status", new Variant<>("normal"),
+                    "IconThemePath", new Variant<>(List.of(), "as"));
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <A> A Get(String interfaceName, String propertyName) {
+            return (A) GetAll(interfaceName).get(propertyName);
+        }
+
+        @Override
+        public <A> void Set(String interfaceName, String propertyName, A value) {
+            // 静态菜单属性只读。
+        }
+
+        @Override
+        public MenuLayout<UInt32, MenuNode> GetLayout(int parentId, int recursionDepth, String[] propertyNames) {
             int depth = recursionDepth < 0 ? Integer.MAX_VALUE : recursionDepth;
-            return new MenuLayout(REVISION, node(parentId, depth));
+            return new MenuLayout<>(REVISION, node(parentId, depth));
         }
 
         @Override

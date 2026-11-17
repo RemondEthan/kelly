@@ -10,11 +10,12 @@
     -fx-background-color: transparent;
 }
 
-/* Title bar：半透明，让整窗背景图透到顶部 */
+/* Title bar：与应用底色同色，作为窗口拖动区域 */
 .header {
     -fx-background-color: -color-header-bg;
     -fx-border-color: transparent transparent -color-border-glass transparent;
     -fx-border-width: 0 0 1 0;
+    -fx-cursor: move;
 }
 
 .header-title {

@@ -1,5 +1,6 @@
 package com.mordor.kelly.ui.chat;
 
+import com.mordor.kelly.app.WindowFrame;
 import com.mordor.kelly.model.AppState;
 import com.mordor.kelly.ui.chat.font.ChatFontSettingsService;
 import com.mordor.kelly.ui.chat.font.FontSettingsDialog;
@@ -10,6 +11,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -18,11 +20,11 @@ import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
 
 /**
- * 聊天界面顶部标题栏。
+ * 聊天界面顶部标题栏，同时充当应用自绘的窗口标题栏。
  *
  * <h3>布局结构（HBox 水平排列）</h3>
  * <pre>
- *   [用户名 🟢] --- [spacer 弹性空间] --- [知识库] [用户A ↔ 用户B] [字体图标] [主题]
+ *   [用户名 🟢] --- [spacer 弹性空间] --- [知识库] [用户A ↔ 用户B] [字体图标] [主题] [最小化] [最大化] [关闭]
  * </pre>
  *
  * <h3>组件说明</h3>
@@ -32,7 +34,13 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
  *   <li><b>连接信息</b> - 显示 "用户A ↔ 用户B"，通过属性绑定实时更新</li>
  *   <li><b>字体按钮</b> - 点击打开字体设置对话框</li>
  *   <li><b>主题按钮</b> - 点击在亮色 / 深色之间切换，选择会持久化</li>
+ *   <li><b>窗口按钮</b> - 最小化 / 最大化 / 关闭，取代系统原生标题栏</li>
  * </ul>
+ *
+ * <h3>窗口拖动</h3>
+ * <p>系统装饰已被去掉（见 {@link WindowFrame#apply(Stage)}），
+ * 整个标题栏都是窗口拖动区域：按住空白处即可移动窗口，
+ * 按在按钮上则照常触发按钮本身。</p>
  *
  * <h3>JavaFX 属性绑定</h3>
  * <p>{@code visibleProperty().bind(...)} 将按钮可见性与控制器的 kelsyEnabled 属性绑定，
@@ -53,7 +61,7 @@ public class ChatHeader extends HBox {
         super();
         getStyleClass().add("header");
         setAlignment(Pos.CENTER_LEFT);
-        setPadding(new Insets(10, 12, 10, 12));
+        setPadding(new Insets(5, 12, 5, 12));
         setSpacing(8);
 
         // 用户名标题 + 在线状态图标
@@ -94,6 +102,8 @@ public class ChatHeader extends HBox {
         FontIcon fontButton = new FontIcon(MaterialDesignF.FORMAT_FONT);
         fontButton.getStyleClass().add("header-font-button");
         fontButton.setCursor(javafx.scene.Cursor.HAND);
+        // 消费按下事件，避免触发标题栏的窗口拖动
+        fontButton.setOnMousePressed(MouseEvent::consume);
         fontButton.setOnMouseClicked(e ->
                 FontSettingsDialog.show(
                         getScene() == null ? null : (Stage) getScene().getWindow(),
@@ -104,5 +114,11 @@ public class ChatHeader extends HBox {
 
         // 主题切换按钮：亮色 / 深色
         getChildren().add(new ThemeToggleButton());
+
+        // 窗口按钮：最小化 / 最大化 / 关闭（系统装饰已去掉，由应用自绘）
+        getChildren().add(WindowFrame.windowButtons(this));
+
+        // 标题栏整体作为窗口拖动区域
+        WindowFrame.makeDraggable(this);
     }
 }
