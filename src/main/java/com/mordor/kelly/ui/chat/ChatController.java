@@ -50,11 +50,13 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -130,6 +132,16 @@ public class ChatController {
     private final BooleanProperty kelsyEnabled = new SimpleBooleanProperty(false);
     /** 知识库内存使用是否超限警告 */
     private final BooleanProperty memoryWarn = new SimpleBooleanProperty(false);
+    /** 与服务器的连接是否可用（脱机模式恒为 false） */
+    private final BooleanProperty online = new SimpleBooleanProperty(false);
+    /** 是否正在（重新）连接 */
+    private final BooleanProperty reconnecting = new SimpleBooleanProperty(false);
+    /** 最近一次断开的原因 */
+    private volatile String lastCloseReason = "";
+    /** 当前链路状态 */
+    private volatile ImClient.LinkState linkState = ImClient.LinkState.DISCONNECTED;
+    /** 断线前在线的成员 ID：重连后这些成员不再重复提示「已加入」 */
+    private final Set<Integer> peersBeforeDrop = new HashSet<>();
     /** 引用回合管理器：跟踪助手回复中的工具调用和引用 */
     private final CitationTurn citations = new CitationTurn();
     /** 引用源变更回调 */
@@ -222,6 +234,10 @@ public class ChatController {
             state.client().avatars().forEach((id, png) ->
                     AvatarService.fromPngBytes(png).ifPresent(img -> peerAvatars.put(id, img)));
             state.client().roster().forEach((id, name) -> lastSeenIds.put(name, id));
+            // 进入聊天时握手已经成功，链路可用
+            online.set(state.client().isConnected());
+            linkState = state.client().linkState();
+            state.setOnline(online.get());
         }
         if (this.settings.enabled(this.imCode)) {
             try {
@@ -324,6 +340,50 @@ public class ChatController {
 
     public boolean kelsyEnabled() {
         return kelsyEnabled.get();
+    }
+
+    /**
+     * 连接是否可用。
+     *
+     * @return 与服务器的链路可用返回 true
+     */
+    public BooleanProperty onlineProperty() {
+        return online;
+    }
+
+    /**
+     * 是否正在（重新）连接。
+     *
+     * @return 正在连接返回 true
+     */
+    public BooleanProperty reconnectingProperty() {
+        return reconnecting;
+    }
+
+    /**
+     * 当前是否处于脱机模式。
+     *
+     * <p>脱机模式没有服务器连接，重连入口是空操作。</p>
+     *
+     * @return 脱机模式返回 true
+     */
+    public boolean offlineMode() {
+        return offline();
+    }
+
+    /**
+     * 手动触发重连。
+     *
+     * <p>复用同一个 IM 客户端实例重开连接，因此凭据、加密密钥、头像都不需要迁移。</p>
+     */
+    public void reconnect() {
+        if (offline() || state == null || state.client() == null) {
+            return;
+        }
+        state.client().reconnect().exceptionally(ex -> {
+            Diagnostics.warn("chat", "reconnect failed: %s", rootMessage(ex));
+            return null;
+        });
     }
 
     public KnowledgeStore knowledgeStore() {
@@ -517,7 +577,11 @@ public class ChatController {
             peerSender.sendChat(content);
             addSelf(content);
         } catch (Exception e) {
-            addSystem("发送失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+            // 连接断开时不排队补发：直接提示用户，由用户决定是否重连后重发
+            boolean down = state != null && state.client() != null && !state.client().isConnected();
+            addSystem(down
+                    ? "连接已断开，消息未发送。点击标题栏的「重连」恢复连接"
+                    : "发送失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
         }
         return SendResult.ok();
     }
@@ -937,7 +1001,8 @@ public class ChatController {
                 lastSeenIds.put(username, userId);
                 boolean firstSeen = peers.put(userId, username) == null;
                 refreshPeers();
-                if (firstSeen) {
+                // 断线前就在线的老成员，重连回来时不再重复提示
+                if (firstSeen && !peersBeforeDrop.contains(userId)) {
                     addSystem(username + " 已加入");
                 }
             }
@@ -958,9 +1023,12 @@ public class ChatController {
                 }
             }
             case ImClient.Event.Closed(String reason) -> {
-                state.setOnline(false);
-                addSystem(reason);
+                // 断开原因只记录，不在这里发消息：状态迁移由 LinkStateChanged 统一处理
+                lastCloseReason = reason;
+                dropPeers();
             }
+            case ImClient.Event.LinkStateChanged(ImClient.LinkState linkState) ->
+                    onLinkState(linkState);
             case ImClient.Event.ServerError(String message) ->
                     addSystem("[错误] " + message);
             case ImClient.Event.DecryptFailed(String username) ->
@@ -969,6 +1037,71 @@ public class ChatController {
                 // 登录阶段已处理
             }
         }
+    }
+
+    /**
+     * 处理链路状态变化。
+     *
+     * <p>状态迁移决定 UI 的在线图标、重连按钮的显隐，以及系统提示文案。</p>
+     *
+     * @param next 新的链路状态
+     */
+    private void onLinkState(ImClient.LinkState next) {
+        ImClient.LinkState prev = linkState;
+        linkState = next;
+        switch (next) {
+            case CONNECTED -> {
+                online.set(true);
+                reconnecting.set(false);
+                if (prev != ImClient.LinkState.CONNECTED) {
+                    addSystem("已重新连接");
+                    peersBeforeDrop.clear();
+                }
+            }
+            case CONNECTING -> {
+                online.set(false);
+                reconnecting.set(true);
+                if (prev == ImClient.LinkState.DISCONNECTED) {
+                    addSystem("正在重新连接…");
+                }
+            }
+            case DISCONNECTED -> {
+                online.set(false);
+                reconnecting.set(false);
+                if (prev != ImClient.LinkState.DISCONNECTED) {
+                    addSystem("连接已断开" + reasonSuffix());
+                }
+            }
+        }
+        if (state != null) {
+            state.setOnline(online.get());
+        }
+    }
+
+    /**
+     * 断开原因后缀，用于系统提示文案。
+     *
+     * @return 带冒号的原因描述，无原因时返回空串
+     */
+    private String reasonSuffix() {
+        String reason = lastCloseReason;
+        return reason == null || reason.isBlank() ? "" : "：" + reason;
+    }
+
+    /**
+     * 断线瞬间清空成员列表。
+     *
+     * <p>服务端在发送 registered 之前先补发 peer_connected，所以成员必须在断连时清，
+     * 不能等到重连成功才清，否则会把刚收到的新 roster 抹掉。</p>
+     */
+    private void dropPeers() {
+        if (peers.isEmpty()) {
+            return;
+        }
+        peersBeforeDrop.clear();
+        peersBeforeDrop.addAll(peers.keySet());
+        peers.clear();
+        refreshPeers();
     }
 
     private void refreshPeers() {
@@ -1009,6 +1142,8 @@ public class ChatController {
             case ImClient.Event.Chat(String username, String plaintext) ->
                     "Chat(" + username + ",len=" + plaintext.length() + ")";
             case ImClient.Event.Closed(String reason) -> "Closed(" + reason + ")";
+            case ImClient.Event.LinkStateChanged(ImClient.LinkState linkState) ->
+                    "LinkStateChanged(" + linkState + ")";
             case ImClient.Event.ServerError(String message) -> "ServerError(" + message + ")";
             case ImClient.Event.DecryptFailed(String username) -> "DecryptFailed(" + username + ")";
             case ImClient.Event.Registered(int userId, String ignored) -> "Registered(" + userId + ")";

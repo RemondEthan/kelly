@@ -11,6 +11,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -75,6 +76,22 @@ public class ChatHeader extends HBox {
         state.onlineProperty().addListener((obs, oldVal, online) ->
                 title.setGraphic(EmojiImages.view(online ? "🟢" : "🔴", 14)));
 
+        // 重连按钮：离线时出现，点击后立即重连；连接中显示「重连中…」并禁用
+        Button reconnect = new Button();
+        reconnect.getStyleClass().add("header-button");
+        reconnect.setTooltip(new Tooltip("重新连接服务器"));
+        reconnect.textProperty().bind(Bindings.when(controller.reconnectingProperty())
+                .then("重连中…").otherwise("重连"));
+        reconnect.disableProperty().bind(controller.reconnectingProperty());
+        // 脱机模式没有服务器连接，按钮永不出现
+        if (controller.offlineMode()) {
+            reconnect.visibleProperty().bind(Bindings.createBooleanBinding(() -> false));
+        } else {
+            reconnect.visibleProperty().bind(controller.onlineProperty().not());
+        }
+        reconnect.managedProperty().bind(reconnect.visibleProperty());
+        reconnect.setOnAction(e -> controller.reconnect());
+
         // 弹性空间：占满标题栏剩余宽度，将右侧组件推到右边
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -96,7 +113,7 @@ public class ChatHeader extends HBox {
                 () -> state.username() + " ↔ " + state.peerDisplayProperty().get(),
                 state.peerDisplayProperty()));
 
-        getChildren().addAll(title, spacer, knowledge, meta);
+        getChildren().addAll(title, reconnect, spacer, knowledge, meta);
 
         // 字体设置按钮（使用 ikonli 图标库）
         FontIcon fontButton = new FontIcon(MaterialDesignF.FORMAT_FONT);
