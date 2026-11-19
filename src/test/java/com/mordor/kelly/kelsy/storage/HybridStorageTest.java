@@ -95,6 +95,32 @@ class HybridStorageTest {
         assertEquals(StorageException.Code.UNSUPPORTED_SCHEMA,assertThrows(StorageException.class,()->new TodoRepository(root,clock)).code());
         assertTrue(Files.size(root.resolve(".kelly-data.db"))>0);
     }
+    @Test void upgradesExistingV1TaskAndItsSearchIndex() throws Exception {
+        UUID uid = UUID.randomUUID();
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + root.resolve(".kelly-data.db"));
+             var schema = DatabaseBootstrap.class.getResourceAsStream("/com/mordor/kelly/kelsy/storage/schema/data-v1.sql")) {
+            assertNotNull(schema);
+            DatabaseBootstrap.executeScript(connection, new String(schema.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO todos(id,uid,title,created_at,updated_at) VALUES(1,?,'original',0,0)
+                    """)) {
+                insert.setString(1, uid.toString());
+                insert.executeUpdate();
+            }
+            try (var sql = connection.createStatement()) {
+                sql.execute("INSERT INTO todo_search_content VALUES(1,'original','')");
+                sql.execute("INSERT INTO todo_events VALUES(1,1,1,'created','{}',0)");
+            }
+        }
+        try (var repository = new TodoRepository(root, clock)) {
+            assertEquals("original", repository.get(uid).title());
+            assertEquals(uid, repository.list(new TodoRepository.Query(TodoStatus.OPEN, null, null,
+                    TodoRepository.DueMode.ANY, "original", 10, null)).items().getFirst().uid());
+            var completed = repository.complete(uid, 1);
+            assertEquals(clock.instant(), completed.completedAt());
+            assertEquals(2, completed.version());
+        }
+    }
     @Test void portableBackupRestoresArticleTaskAndSources() throws Exception {
         Path user=root.resolve("user"), archive=root.resolve("backup.zip"), restored=root.resolve("restored");
         try(var store=new KnowledgeStore(user)) {

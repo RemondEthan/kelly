@@ -39,6 +39,16 @@ class AskGroundingTest {
     }
 
     @Test
+    void migrationConfirmationReachesLocalAssistantVerbatim() {
+        try (var store = new KnowledgeStore(dir, null)) {
+            String command = "确认迁移 " + java.util.UUID.randomUUID();
+            var grounding = AskGrounding.prepare(store, command, LocalDate.of(2026, 9, 15));
+            assertFalse(grounding.searched());
+            assertEquals(command, grounding.messageForModel());
+        }
+    }
+
+    @Test
     void citationPathsSkipKnowledgeCatalog() {
         var grounding = new AskGrounding(true, List.of(
                 new KnowledgeStore.Hit("knowledge/KNOWLEDGE.md", 1, "会议目录", 0.9),

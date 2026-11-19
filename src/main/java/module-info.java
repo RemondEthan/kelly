@@ -100,6 +100,7 @@ module com.mordor.kelly {
     opens com.mordor.kelly.model         to javafx.fxml;
     opens com.mordor.kelly.service       to javafx.fxml;
     opens com.mordor.kelly.common        to javafx.fxml;
+    opens com.mordor.kelly.kelsy.service to com.fasterxml.jackson.databind; // Migration plan and report records
     opens com.mordor.kelly.kelsy.config  to com.fasterxml.jackson.databind;  // Jackson 反射反序列化配置
     opens com.mordor.kelly.kelsy.provider to com.fasterxml.jackson.databind; // Jackson 反射反序列化提供者
 }

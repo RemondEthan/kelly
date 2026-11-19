@@ -174,6 +174,18 @@ public final class KnowledgeIndex implements AutoCloseable {
         catch(SQLException e){throw failure(e);}}reconcile();
     }
     public synchronized void delete(String path){check();try(var q=db.prepareStatement("DELETE FROM documents WHERE path=?")){q.setString(1,path);q.executeUpdate();errors.remove(path);invalidHashes.remove(path);}catch(SQLException e){throw failure(e);}}
+    synchronized boolean matchesDocument(String path, UUID uid, String hash) {
+        check();
+        try (var query = db.prepareStatement("""
+                SELECT 1 FROM documents WHERE path=? AND document_uid=? AND content_hash=? AND state='ready'
+                """)) {
+            query.setString(1, path);
+            query.setString(2, uid.toString());
+            query.setString(3, hash);
+            try (var result = query.executeQuery()) { return result.next() && !errors.containsKey(path); }
+        } catch (SQLException e) { throw failure(e); }
+    }
+
     public synchronized String pathFor(UUID uid){check();try(var q=db.prepareStatement("SELECT path FROM documents WHERE document_uid=?")){q.setString(1,uid.toString());try(var r=q.executeQuery()){if(!r.next())throw new StorageException(NOT_FOUND,"Article ID not indexed");return r.getString(1);}}catch(SQLException e){throw failure(e);}}
     public synchronized List<KnowledgeStore.Hit> search(FindQuery query,int limit){return search(query,null,Set.of(),limit);}
     public synchronized List<KnowledgeStore.Hit> search(FindQuery query,String kind,Set<String> tags,int limit){

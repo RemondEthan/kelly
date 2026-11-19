@@ -74,6 +74,62 @@ public final class TodoRepository implements AutoCloseable {
             setSources(uid,in.sources()); maintain(uid,"created"); return get(uid);
         });
     }
+    public record LegacyImport(UUID uid, String sourceHash) {}
+
+    public synchronized Optional<LegacyImport> legacyImport(String path) {
+        check();
+        try (var query = db.prepareStatement("SELECT todo_uid,source_hash FROM legacy_todo_imports WHERE source_path=?")) {
+            query.setString(1, path);
+            try (var row = query.executeQuery()) {
+                return row.next() ? Optional.of(new LegacyImport(UUID.fromString(row.getString(1)), row.getString(2)))
+                                  : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new StorageException(STORE_UNAVAILABLE, "Cannot read legacy task mapping", e);
+        }
+    }
+
+    public synchronized Todo importLegacy(String path, String hash, UUID uid, Input input,
+                                          TodoStatus status, Instant completedAt) {
+        validate(input);
+        return transaction(() -> {
+            var previous = legacyImport(path);
+            if (previous.isPresent()) {
+                if (!previous.get().equals(new LegacyImport(uid, hash))) {
+                    throw new StorageException(CONFLICT, "Legacy task source changed");
+                }
+                return get(uid);
+            }
+            long now = clock.millis();
+            try (var insert = db.prepareStatement("""
+                    INSERT INTO todos(uid,title,description_md,due_date,priority,created_at,updated_at,
+                                      status,completed_at,legacy_completion_unknown)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)
+                    """)) {
+                insert.setString(1, uid.toString());
+                insert.setString(2, input.title().strip());
+                insert.setString(3, input.descriptionMd());
+                insert.setString(4, input.dueDate() == null ? null : input.dueDate().toString());
+                insert.setInt(5, input.priority());
+                insert.setLong(6, now);
+                insert.setLong(7, now);
+                insert.setString(8, status.name().toLowerCase(Locale.ROOT));
+                insert.setObject(9, completedAt == null ? null : completedAt.toEpochMilli());
+                insert.setBoolean(10, status == TodoStatus.CLOSED && completedAt == null);
+                insert.executeUpdate();
+            }
+            try (var mapping = db.prepareStatement("INSERT INTO legacy_todo_imports VALUES(?,?,?)")) {
+                mapping.setString(1, path);
+                mapping.setString(2, hash);
+                mapping.setString(3, uid.toString());
+                mapping.executeUpdate();
+            }
+            setSources(uid, input.sources());
+            maintain(uid, "legacy_imported");
+            return get(uid);
+        });
+    }
+
     public synchronized Todo get(UUID uid) {
         check();
         try(var p=db.prepareStatement("SELECT * FROM todos WHERE uid=? AND deleted_at IS NULL")) {
@@ -111,12 +167,13 @@ public final class TodoRepository implements AutoCloseable {
             if(old.version()!=version) throw new StorageException(CONFLICT,"Task version changed; read it again");
             if(status!=null && old.status()==status) return old;
             long now=clock.millis();
-            try(var p=db.prepareStatement("UPDATE todos SET title=?,description_md=?,due_date=?,priority=?,status=?,completed_at=?,deleted_at=?,updated_at=?,version=version+1 WHERE uid=? AND version=?")) {
+            try(var p=db.prepareStatement("UPDATE todos SET title=?,description_md=?,due_date=?,priority=?,status=?,completed_at=?,legacy_completion_unknown=(?='closed' AND ? IS NULL),deleted_at=?,updated_at=?,version=version+1 WHERE uid=? AND version=?")) {
                 p.setString(1,in==null?old.title():in.title().strip());p.setString(2,in==null?old.descriptionMd():in.descriptionMd());
                 LocalDate due=in==null?old.dueDate():in.dueDate();p.setString(3,due==null?null:due.toString());p.setInt(4,in==null?old.priority():in.priority());
                 TodoStatus next=status==null?old.status():status; p.setString(5,next.name().toLowerCase(Locale.ROOT));
                 Instant done=status==TodoStatus.CLOSED?Instant.ofEpochMilli(now):status==TodoStatus.OPEN?null:old.completedAt();
-                p.setObject(6,done==null?null:done.toEpochMilli());p.setObject(7,delete?now:null);p.setLong(8,now);p.setString(9,uid.toString());p.setLong(10,version);
+                p.setObject(6,done==null?null:done.toEpochMilli());p.setString(7,next.name().toLowerCase(Locale.ROOT));p.setObject(8,done==null?null:done.toEpochMilli());
+                p.setObject(9,delete?now:null);p.setLong(10,now);p.setString(11,uid.toString());p.setLong(12,version);
                 if(p.executeUpdate()!=1) throw new StorageException(CONFLICT,"Task changed");
             }
             if(in!=null) setSources(uid,in.sources());

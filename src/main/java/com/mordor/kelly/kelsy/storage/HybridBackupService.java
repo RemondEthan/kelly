@@ -3,7 +3,6 @@ package com.mordor.kelly.kelsy.storage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mordor.kelly.kelsy.service.*;
 import java.nio.file.*;
-import java.nio.charset.StandardCharsets;
 import java.io.*;
 import java.util.*;
 import java.util.zip.*;
@@ -30,8 +29,7 @@ public final class HybridBackupService {
         return HexFormat.of().formatHex(digest.digest());
     }
     private HybridBackupService() {}
-    private static String hash(byte[] bytes)throws Exception{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}
-    private static boolean included(String path){return path.equals("MEMORY.md")||path.equals("AGENTS.md")||path.endsWith(".md")&&(path.startsWith("knowledge/")||path.startsWith("memory/"));}
+    private static boolean included(String path){return path.equals("MEMORY.md")||path.equals("KNOWLEDGE.md")||path.equals(".todo-reminder-ledger")||path.equals("AGENTS.md")||path.toLowerCase(Locale.ROOT).endsWith(".md")&&(path.startsWith("knowledge/")||path.startsWith("memory/"));}
     /** Caller pauses application writes until this returns. External edits are detected and fail the snapshot. */
     public static void backup(KnowledgeStore store,Path destination){
         Path snapshot=null,archive=null;
@@ -49,8 +47,21 @@ public final class HybridBackupService {
                 zip.putNextEntry(new ZipEntry(".kelly-data.db"));
                 try(var in=Files.newInputStream(snapshot)){manifest.put(".kelly-data.db",copy(in,zip,budget));}
                 zip.closeEntry();
-                for(String path:paths){byte[] bytes=files.readText(path).getBytes(StandardCharsets.UTF_8);budget.add(bytes.length,bytes.length);manifest.put(path,hash(bytes));put(zip,path,bytes);}
-                for(String path:paths)if(!manifest.get(path).equals(hash(files.readText(path).getBytes(StandardCharsets.UTF_8))))throw new IOException("File changed during backup: "+path);
+                for (String path : paths) {
+                    zip.putNextEntry(new ZipEntry(path));
+                    try (var in = Files.newInputStream(files.safe(path))) {
+                        manifest.put(path, copy(in, zip, budget));
+                    }
+                    zip.closeEntry();
+                }
+                Budget recheck = new Budget();
+                for (String path : paths) {
+                    try (var in = Files.newInputStream(files.safe(path))) {
+                        if (!manifest.get(path).equals(copy(in, OutputStream.nullOutputStream(), recheck))) {
+                            throw new IOException("File changed during backup: " + path);
+                        }
+                    }
+                }
                 List<String> after;try(var stream=Files.walk(store.workspace())){after=stream.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)).map(p->store.workspace().relativize(p).toString().replace('\\','/')).filter(HybridBackupService::included).sorted().toList();}
                 if(!after.equals(paths))throw new IOException("File set changed during backup");
                 byte[] metadata=JSON.writeValueAsBytes(manifest);

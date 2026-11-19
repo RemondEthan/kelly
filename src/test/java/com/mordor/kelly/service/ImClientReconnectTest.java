@@ -224,6 +224,23 @@ class ImClientReconnectTest {
     }
 
     @Test
+    void delayedKeepaliveTickGivesLinkTimeToRespond() {
+        Recorder recorder = new Recorder();
+        ImClient client = recorder.client();
+        client.markConnectedForTest(3L);
+        long schedulerPause = ImClient.LINK_IDLE_TIMEOUT_MS + 1_000;
+        client.backdateInboundForTest(schedulerPause);
+        client.backdateKeepaliveTickForTest(schedulerPause);
+
+        client.runKeepaliveTick();
+        client.runKeepaliveTick();
+
+        assertEquals(ImClient.LinkState.CONNECTED, client.linkState(),
+                "保活调度恢复后应给探测响应留出时间");
+        assertFalse(recorder.hasClosed());
+    }
+
+    @Test
     void watchdogIgnoredWhileHandshaking() {
         Recorder recorder = new Recorder();
         ImClient client = recorder.client();

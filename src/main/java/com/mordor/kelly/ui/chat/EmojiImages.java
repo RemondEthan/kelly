@@ -38,7 +38,13 @@ public final class EmojiImages {
     /** 所有支持的 emoji 字符串列表（不可变） */
     private static final List<String> EMOJI_LIST = Collections.unmodifiableList(new ArrayList<>(EMOJI_MAP.values()));
 
+    private static final Map<Integer, List<String>> EMOJI_BY_FIRST_CODE_POINT = new HashMap<>();
+
     static {
+        for (String emoji : EMOJI_LIST) {
+            EMOJI_BY_FIRST_CODE_POINT.computeIfAbsent(emoji.codePointAt(0), key -> new ArrayList<>())
+                    .add(emoji);
+        }
         if (EMOJI_MAP.isEmpty()) {
             System.err.println("[EmojiImages] Warning: No emoji PNG resources found on classpath /emoji/");
         }
@@ -78,71 +84,29 @@ public final class EmojiImages {
         if (text == null || text.isEmpty()) {
             return new FlowParts(flow, new int[0]);
         }
-        int[] offsets = new int[countChildren(text)];  // 预分配偏移数组
-        int childIdx = 0;
-        int i = 0;
-        int rawOffset = 0;       // 当前位置在原始文本中的偏移
-        StringBuilder buf = new StringBuilder();  // 累积非 emoji 文本
-        while (i < text.length()) {
-            String match = matchAt(text, i);  // 尝试匹配 emoji
-            if (match != null) {
-                // 先输出累积的文本
-                if (!buf.isEmpty()) {
-                    offsets[childIdx] = rawOffset;
-                    flow.getChildren().add(new Text(buf.toString()));
-                    rawOffset += buf.length();
-                    buf.setLength(0);
-                    childIdx++;
-                }
-                // 输出 emoji 图片
-                offsets[childIdx] = rawOffset;
-                flow.getChildren().add(view(match, 16));
-                rawOffset += match.length();
-                i += match.length();
-                childIdx++;
-            } else {
-                buf.append(text.charAt(i));
-                i++;
+        List<Integer> offsets = new ArrayList<>();
+        int textStart = 0;
+        int index = 0;
+        while (index < text.length()) {
+            String match = matchAt(text, index);
+            if (match == null) {
+                index += Character.charCount(text.codePointAt(index));
+                continue;
             }
-        }
-        // 输出剩余文本
-        if (!buf.isEmpty()) {
-            offsets[childIdx] = rawOffset;
-            flow.getChildren().add(new Text(buf.toString()));
-        }
-        return new FlowParts(flow, offsets);
-    }
-
-    /**
-     * 计算文本解析后的子节点数量（用于预分配偏移数组）。
-     */
-    private static int countChildren(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        int count = 0;
-        int i = 0;
-        while (i < text.length()) {
-            String match = matchAt(text, i);
-            if (match != null) {
-                count++;
-                i += match.length();
-            } else {
-                int j = i;
-                while (j < text.length()) {
-                    String m = matchAt(text, j);
-                    if (m != null) break;
-                    j++;
-                }
-                if (j > i) count++;
-                if (j < text.length()) {
-                    i = j;
-                } else {
-                    count++;
-                    i = j;
-                    break;
-                }
+            if (textStart < index) {
+                offsets.add(textStart);
+                flow.getChildren().add(new Text(text.substring(textStart, index)));
             }
+            offsets.add(index);
+            flow.getChildren().add(view(match, 16));
+            index += match.length();
+            textStart = index;
         }
-        return count;
+        if (textStart < text.length()) {
+            offsets.add(textStart);
+            flow.getChildren().add(new Text(text.substring(textStart)));
+        }
+        return new FlowParts(flow, offsets.stream().mapToInt(Integer::intValue).toArray());
     }
 
     /**
@@ -318,7 +282,11 @@ public final class EmojiImages {
      * @return 匹配到的 emoji 字符串，无匹配返回 null
      */
     private static String matchAt(String text, int index) {
-        for (String emoji : EMOJI_LIST) {
+        List<String> candidates = EMOJI_BY_FIRST_CODE_POINT.get(text.codePointAt(index));
+        if (candidates == null) {
+            return null;
+        }
+        for (String emoji : candidates) {
             if (text.startsWith(emoji, index)) {
                 return emoji;
             }

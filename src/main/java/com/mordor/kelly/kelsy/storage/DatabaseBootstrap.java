@@ -23,7 +23,7 @@ public final class DatabaseBootstrap {
                 s.execute("PRAGMA synchronous=" + (index ? "NORMAL" : "FULL"));
                 int version;
                 try (ResultSet r = s.executeQuery("PRAGMA user_version")) { version = r.getInt(1); }
-                if (version > 1) throw new StorageException(StorageException.Code.UNSUPPORTED_SCHEMA, "Database version " + version + " is newer than this application");
+                if (version > (index ? 1 : 2)) throw new StorageException(StorageException.Code.UNSUPPORTED_SCHEMA, "Database version " + version + " is newer than this application");
                 if (version == 0) {
                     try (ResultSet r = s.executeQuery("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")) {
                         if (r.getInt(1) != 0) throw new StorageException(StorageException.Code.UNSUPPORTED_SCHEMA, "Unversioned database requires explicit recovery");
@@ -34,9 +34,10 @@ public final class DatabaseBootstrap {
                         executeScript(c, new String(in.readAllBytes(), StandardCharsets.UTF_8));
                     }
                 }
+                if (!index && version < 2) upgradeTodoSchema(c);
                 String[] required = index
                     ? new String[]{"documents", "chunks", "search_content", "article_fts", "search_content_ai", "search_content_ad", "search_content_au"}
-                    : new String[]{"todos", "todo_sources", "todo_events", "reminder_slots", "reminder_batches", "todo_fts", "todo_search_content_ai", "todo_search_content_ad", "todo_search_content_au"};
+                    : new String[]{"todos", "legacy_todo_imports", "todo_sources", "todo_events", "reminder_slots", "reminder_batches", "todo_fts", "todo_search_content_ai", "todo_search_content_ad", "todo_search_content_au"};
                 for (String name : required) {
                     try (var p = c.prepareStatement("SELECT 1 FROM sqlite_master WHERE name=?")) {
                         p.setString(1,name);
@@ -53,6 +54,35 @@ public final class DatabaseBootstrap {
             throw new StorageException(StorageException.Code.STORE_UNAVAILABLE, "Cannot open local database", e);
         }
     }
+    private static void upgradeTodoSchema(Connection connection) throws Exception {
+        try (var sql = connection.createStatement()) {
+            sql.execute("PRAGMA foreign_keys=OFF");
+            sql.execute("BEGIN IMMEDIATE");
+            try {
+                boolean needsUpgrade;
+                try (var result = sql.executeQuery("PRAGMA user_version")) {
+                    needsUpgrade = result.getInt(1) == 1;
+                }
+                if (needsUpgrade) {
+                    try (var in = DatabaseBootstrap.class.getResourceAsStream(
+                            "/com/mordor/kelly/kelsy/storage/schema/data-v2.sql")) {
+                        if (in == null) throw new IllegalStateException("Missing data-v2.sql");
+                        executeScript(connection, new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                    }
+                    try (var violations = sql.executeQuery("PRAGMA foreign_key_check")) {
+                        if (violations.next()) throw new SQLException("Task schema upgrade broke a foreign key");
+                    }
+                }
+                sql.execute("COMMIT");
+            } catch (Exception failure) {
+                try { sql.execute("ROLLBACK"); } catch (SQLException ignored) {}
+                throw failure;
+            } finally {
+                sql.execute("PRAGMA foreign_keys=ON");
+            }
+        }
+    }
+
     static void executeScript(Connection c, String sql) throws SQLException {
         StringBuilder statement = new StringBuilder();
         boolean trigger = false;

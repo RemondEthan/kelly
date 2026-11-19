@@ -17,7 +17,7 @@ public record AskGrounding(boolean searched, List<KnowledgeStore.Hit> attached, 
     }
 
     public static AskGrounding prepare(KnowledgeStore store, String userText, LocalDate today) {
-        if (LocalEvidence.terms(userText).isEmpty()) {
+        if (MigrationAgentTool.isConfirmation(userText) || LocalEvidence.terms(userText).isEmpty()) {
             return new AskGrounding(false, List.of(), userText);
         }
         if (store == null) return new AskGrounding(false, List.of(), userText);

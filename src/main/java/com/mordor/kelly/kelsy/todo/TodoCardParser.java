@@ -109,7 +109,7 @@ public final class TodoCardParser {
      * @param raw 状态字符串
      * @return 对应的 TodoStatus，无法解析时返回 null
      */
-    private static TodoStatus parseStatus(String raw) {
+    public static TodoStatus parseStatus(String raw) {
         if (raw == null) {
             return null;
         }
@@ -125,7 +125,7 @@ public final class TodoCardParser {
     /**
      * 按优先级提取标题：标题字段 > 标题行 > 文件名。
      */
-    private static String titleOf(String titleRaw, String heading, String relativePath) {
+    public static String titleOf(String titleRaw, String heading, String relativePath) {
         if (titleRaw != null && !titleRaw.isBlank()) {
             return titleRaw.strip();
         }

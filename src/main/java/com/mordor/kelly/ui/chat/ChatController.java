@@ -33,6 +33,8 @@ import com.mordor.kelly.service.ImageWire;
 import com.mordor.kelly.service.ImClient;
 import com.mordor.kelly.service.MediaStore;
 import com.mordor.kelly.service.PreviewJpeg;
+import javafx.animation.Animation;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.IntegerBinding;
@@ -621,24 +623,66 @@ public class ChatController {
         AssistantMessage reply = AssistantMessage.streaming(Sender.ASSISTANT);
         liveAssistant.set(reply);
         assistant.chat(grounding.messageForModel(), new AssistantService.ReplyHandler() {
+            private final StringBuilder pendingText = new StringBuilder();
+            private final StringBuilder pendingThinking = new StringBuilder();
+            private final PauseTransition refresh = new PauseTransition(javafx.util.Duration.millis(50));
+
+            {
+                refresh.setOnFinished(event -> flush());
+            }
+
+            private void appendDelta(StringBuilder pending, String delta) {
+                if (controllerClosed || delta == null || delta.isEmpty()) {
+                    return;
+                }
+                pending.append(delta);
+                if (!Platform.isFxApplicationThread()) {
+                    flush();
+                } else if (refresh.getStatus() != Animation.Status.RUNNING) {
+                    refresh.playFromStart();
+                }
+            }
+
+            private void flush() {
+                if (controllerClosed) {
+                    pendingText.setLength(0);
+                    pendingThinking.setLength(0);
+                    return;
+                }
+                if (!pendingThinking.isEmpty()) {
+                    reply.appendThinking(pendingThinking.toString());
+                    pendingThinking.setLength(0);
+                }
+                if (!pendingText.isEmpty()) {
+                    reply.append(pendingText.toString());
+                    pendingText.setLength(0);
+                }
+            }
+
             @Override
             public void onTextDelta(String delta) {
-                onFx(() -> reply.append(delta));
+                onFx(() -> appendDelta(pendingText, delta));
             }
 
             @Override
             public void onTextEnd() {
-                onFx(reply::finish);
+                onFx(() -> {
+                    flush();
+                    reply.finish();
+                });
             }
 
             @Override
             public void onThinkingDelta(String delta) {
-                onFx(() -> reply.appendThinking(delta));
+                onFx(() -> appendDelta(pendingThinking, delta));
             }
 
             @Override
             public void onThinkingEnd() {
-                onFx(reply::finishThinking);
+                onFx(() -> {
+                    flush();
+                    reply.finishThinking();
+                });
             }
 
             @Override
@@ -695,6 +739,9 @@ public class ChatController {
             @Override
             public void onComplete() {
                 onFx(() -> {
+                    refresh.stop();
+                    flush();
+                    if (controllerClosed) return;
                     reply.finish();
                     liveAssistant.set(null);
                     persistAssistant(reply.content());
@@ -717,6 +764,9 @@ public class ChatController {
             @Override
             public void onError(Throwable error) {
                 onFx(() -> {
+                    refresh.stop();
+                    flush();
+                    if (controllerClosed) return;
                     reply.append("\n[出错] " + rootMessage(error));
                     reply.finish();
                     liveAssistant.set(null);

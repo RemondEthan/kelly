@@ -58,7 +58,9 @@ import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.model.Model;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import io.agentscope.harness.agent.tools.ToolsConfig;
+import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.nio.file.Path;
@@ -88,6 +90,7 @@ public final class LocalAssistantService implements AssistantService {
     /** 与 {@link KnowledgeSearchTool} 共用的用户知识库；仅 {@code ownsStore} 时由本类关闭 */
     private final KnowledgeStore store;
     private final boolean ownsStore;
+    private final LegacyKnowledgeMigration migration;
 
     /**
      * 私有构造函数，通过 {@link #create} 工厂方法创建。
@@ -98,11 +101,12 @@ public final class LocalAssistantService implements AssistantService {
      * @param ownsStore true 时 {@link #close()} 关闭 store
      */
     private LocalAssistantService(HarnessAgent agent, RuntimeContext context, KnowledgeStore store,
-                                  boolean ownsStore) {
+                                  boolean ownsStore, LegacyKnowledgeMigration migration) {
         this.agent = agent;
         this.context = context;
         this.store = store;
         this.ownsStore = ownsStore;
+        this.migration = migration;
     }
 
     /**
@@ -167,6 +171,7 @@ public final class LocalAssistantService implements AssistantService {
                 .sysPrompt(SYS_PROMPT)
                 .model(model)
                 .workspace(workspace)
+                .filesystem(new LocalFilesystemSpec().project(storeRoot))
                 .toolsConfig(toolsConfig)
                 .disableShellTool()        // 禁用 Shell 命令执行（安全考虑）
                 .disableDynamicSkills()    // 禁用动态技能加载
@@ -174,17 +179,20 @@ public final class LocalAssistantService implements AssistantService {
                 .disableDynamicSubagents() // 禁用动态子代理
                 .maxIters(20)              // 限制最大迭代次数（防止无限循环）
                 .build();
+        WorkspaceReadTool.install(agent.getToolkit(), storeRoot);
         agent.getToolkit().registerAgentTool(new KnowledgeSearchTool(knowledge));
         IndexingAgentTool.install(agent.getToolkit(), knowledge);
         TodoAgentTool.install(agent.getToolkit(), knowledge.todos());
         KnowledgeAgentTool.install(agent.getToolkit(), knowledge);
+        var migration = new LegacyKnowledgeMigration(knowledge);
+        MigrationAgentTool.install(agent.getToolkit(), migration);
 
         RuntimeContext context = RuntimeContext.builder()
                 .sessionId(SESSION_ID)
                 .userId(userId)
                 .build();
 
-        return new LocalAssistantService(agent, context, knowledge, closeStore);
+        return new LocalAssistantService(agent, context, knowledge, closeStore, migration);
     }
 
     /**
@@ -198,6 +206,15 @@ public final class LocalAssistantService implements AssistantService {
      */
     @Override
     public void chat(String text, ReplyHandler handler) {
+        if (MigrationAgentTool.isConfirmation(text)) {
+            Mono.fromCallable(() -> MigrationAgentTool.apply(migration, text.strip()))
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribe(reply -> {
+                        handler.onTextDelta(reply);
+                        handler.onTextEnd();
+                    }, handler::onError, handler::onComplete);
+            return;
+        }
         agent.streamEvents(text, context)
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(

@@ -6,6 +6,7 @@ import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -55,6 +56,16 @@ class EmojiImagesTest {
         assertTrue(parts.flow().getChildren().get(0) != null);
         assertEquals(0, parts.charOffsets()[0]);
         assertEquals(2, parts.charOffsets()[1]); // 每个 emoji 占 2 code units
+    }
+
+    @Test
+    void flowWithMap_longThinkingTextPreservesOffsets() {
+        String thinking = "分析检索结果和引用。".repeat(4_000) + "𠀀";
+        FlowParts parts = EmojiImages.flowWithMap(thinking + "🍕完成");
+
+        assertEquals(3, parts.flow().getChildren().size());
+        assertEquals(thinking, ((Text) parts.flow().getChildren().getFirst()).getText());
+        assertArrayEquals(new int[]{0, thinking.length(), thinking.length() + 2}, parts.charOffsets());
     }
 
     @Test

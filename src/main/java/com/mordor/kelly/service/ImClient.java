@@ -304,6 +304,9 @@ public final class ImClient {
      */
     private volatile long lastInboundNanos = System.nanoTime();
 
+    private volatile long lastKeepaliveTickNanos = System.nanoTime();
+    private volatile long watchdogWindowStartNanos = lastKeepaliveTickNanos;
+
     /**
      * 本地用户的头像数据（Base64编码的PNG）
      * 使用 volatile 保证多线程可见性
@@ -798,6 +801,11 @@ public final class ImClient {
         this.registered = true;
         crypto.initialize("test-secret", "|test|" + imCode);
         touchInbound();
+        resetWatchdogWindow();
+    }
+
+    void backdateKeepaliveTickForTest(long millisAgo) {
+        lastKeepaliveTickNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(millisAgo);
     }
 
     /**
@@ -807,6 +815,7 @@ public final class ImClient {
      */
     void backdateInboundForTest(long millisAgo) {
         lastInboundNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(millisAgo);
+        watchdogWindowStartNanos = lastInboundNanos;
     }
 
     /**
@@ -1048,13 +1057,20 @@ public final class ImClient {
      */
     private void startKeepalive() {
         stopKeepalive();
-        keepaliveTask = keepalive.scheduleAtFixedRate(() -> {
+        resetWatchdogWindow();
+        keepaliveTask = keepalive.scheduleWithFixedDelay(() -> {
             try {
                 runKeepaliveTick();
             } catch (Exception ignored) {
                 // 保活失败由关闭回调处理
             }
         }, 5, 5, TimeUnit.SECONDS);
+    }
+
+    private void resetWatchdogWindow() {
+        long now = System.nanoTime();
+        lastKeepaliveTickNanos = now;
+        watchdogWindowStartNanos = now;
     }
 
     /**
@@ -1067,6 +1083,12 @@ public final class ImClient {
         if (!registered) {
             return;
         }
+        long now = System.nanoTime();
+        if (TimeUnit.NANOSECONDS.toMillis(now - lastKeepaliveTickNanos) >= LINK_IDLE_TIMEOUT_MS) {
+            // A stalled scheduler did not send regular probes. Give the next probe time to return.
+            watchdogWindowStartNanos = now;
+        }
+        lastKeepaliveTickNanos = now;
         checkLinkIdle();
         if (linkState != LinkState.CONNECTED) {
             return; // 刚被看门狗判定死亡，本轮不再发送
@@ -1076,7 +1098,7 @@ public final class ImClient {
     }
 
     /**
-     * 链路存活检查：超过阈值未收到任何入站帧即判定链路已死。
+     * 链路存活检查：持续探测期间，超过阈值未收到任何入站帧即判定链路已死。
      *
      * <p>只在 CONNECTED 状态检查——握手阶段有自己的 12 秒超时，
      * CONNECTING 期间服务端尚未应答，不适用静默判定。</p>
@@ -1088,7 +1110,9 @@ public final class ImClient {
         if (linkState != LinkState.CONNECTED) {
             return;
         }
-        long idleMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastInboundNanos);
+        long now = System.nanoTime();
+        long idleMs = TimeUnit.NANOSECONDS.toMillis(
+                Math.min(now - lastInboundNanos, now - watchdogWindowStartNanos));
         if (idleMs < LINK_IDLE_TIMEOUT_MS) {
             return;
         }
