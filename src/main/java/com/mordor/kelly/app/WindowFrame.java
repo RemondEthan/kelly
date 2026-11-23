@@ -16,6 +16,8 @@ import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
+import java.util.Arrays;
+
 /**
  * 自绘窗口框架：去掉系统装饰，改由应用自己画标题栏。
  *
@@ -27,7 +29,7 @@ import javafx.stage.StageStyle;
  *
  * <h3>组成</h3>
  * <ul>
- *   <li>{@link #apply(Stage)} - 去掉系统装饰，启用透明窗口</li>
+ *   <li>{@link #apply(Stage)} - 配置窗口样式</li>
  *   <li>{@link #applyRoundedClip(Region)} - 给根节点加圆角裁剪</li>
  *   <li>{@link #makeDraggable(Node)} - 让某个节点成为窗口拖动区域</li>
  *   <li>{@link #windowButtons(Node)} - 生成最小化 / 最大化 / 关闭按钮组</li>
@@ -53,7 +55,8 @@ public final class WindowFrame {
     }
 
     /**
-     * 配置舞台：去掉系统装饰，并允许窗口内容带圆角。
+     * 配置舞台样式。DDE/X11 上 JavaFX 无边框窗口缺少原生最小化权限，
+     * 因此使用系统边框，让任务栏可以收起窗口。
      *
      * <p>必须在 {@code stage.show()} 之前调用。
      * {@link StageStyle#TRANSPARENT} 同时意味着「无装饰」和「透明」，
@@ -63,7 +66,11 @@ public final class WindowFrame {
      * @param stage 主窗口
      */
     public static void apply(Stage stage) {
-        stage.initStyle(StageStyle.TRANSPARENT);
+        String desktop = System.getenv("XDG_CURRENT_DESKTOP");
+        boolean dde = desktop != null && Arrays.stream(desktop.split(":"))
+                .anyMatch(name -> name.equalsIgnoreCase("DDE") || name.equalsIgnoreCase("Deepin"));
+        boolean x11 = "x11".equalsIgnoreCase(System.getenv("XDG_SESSION_TYPE"));
+        stage.initStyle(dde && x11 ? StageStyle.DECORATED : StageStyle.TRANSPARENT);
     }
 
     /**

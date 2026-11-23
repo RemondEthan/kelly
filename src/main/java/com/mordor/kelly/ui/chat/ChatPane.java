@@ -71,7 +71,7 @@ public class ChatPane extends StackPane {
      *
      * @param state 应用状态
      */
-    public ChatPane(AppState state) {
+    public ChatPane(AppState state, boolean customFrame) {
         long t0 = System.nanoTime();
         // 加载聊天专用 CSS 样式表
         getStylesheets().add(
@@ -103,7 +103,7 @@ public class ChatPane extends StackPane {
         chat.setCenter(new MessageListView(controller));
 
         // 组装 BorderPane 的各个区域
-        ui.setTop(new ChatHeader(state, controller, this, fontService));
+        ui.setTop(new ChatHeader(state, controller, this, fontService, customFrame));
         ui.setLeft(new RoomMemberList(controller, input::insertMention));
         ui.setBottom(input);
         applyCenter();

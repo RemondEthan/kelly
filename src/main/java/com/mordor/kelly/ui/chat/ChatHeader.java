@@ -39,7 +39,7 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
  * </ul>
  *
  * <h3>窗口拖动</h3>
- * <p>系统装饰已被去掉（见 {@link WindowFrame#apply(Stage)}），
+ * <p>使用自绘窗口时（见 {@link WindowFrame#apply(Stage)}），
  * 整个标题栏都是窗口拖动区域：按住空白处即可移动窗口，
  * 按在按钮上则照常触发按钮本身。</p>
  *
@@ -58,7 +58,8 @@ public class ChatHeader extends HBox {
      * @param chatRoot    聊天根节点（用于字体设置对话框）
      * @param fontService 字体设置持久化服务
      */
-    public ChatHeader(AppState state, ChatController controller, Node chatRoot, ChatFontSettingsService fontService) {
+    public ChatHeader(AppState state, ChatController controller, Node chatRoot,
+                      ChatFontSettingsService fontService, boolean customFrame) {
         super();
         getStyleClass().add("header");
         setAlignment(Pos.CENTER_LEFT);
@@ -132,10 +133,9 @@ public class ChatHeader extends HBox {
         // 主题切换按钮：亮色 / 深色
         getChildren().add(new ThemeToggleButton());
 
-        // 窗口按钮：最小化 / 最大化 / 关闭（系统装饰已去掉，由应用自绘）
-        getChildren().add(WindowFrame.windowButtons(this));
-
-        // 标题栏整体作为窗口拖动区域
-        WindowFrame.makeDraggable(this);
+        if (customFrame) {
+            getChildren().add(WindowFrame.windowButtons(this));
+            WindowFrame.makeDraggable(this);
+        }
     }
 }

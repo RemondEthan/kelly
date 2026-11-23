@@ -14,6 +14,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 
 /**
  * Kelly 聊天应用的主入口类，继承自 JavaFX Application。
@@ -148,14 +149,14 @@ public class Kelly extends Application {
      * 登录成功后切换到聊天页面。
      *
      * <p>登录页和聊天页是两个窗口：登录页保留系统原生标题栏，
-     * 聊天页换成无边框圆角窗口（标题栏由 {@link ChatHeader} 自绘）。
+     * 聊天页根据桌面环境使用原生边框或由 {@link ChatHeader} 自绘标题栏。
      * 切换时新窗口沿用登录窗口的位置，看起来像同一个窗口换了副标题栏。</p>
      *
      * <p>流程：
      * <ol>
      *   <li>先关闭之前的会话（如果有）</li>
      *   <li>保存新的客户端连接，注册未读消息监听</li>
-     *   <li>创建 {@link ChatPane}，装进新的无边框窗口</li>
+     *   <li>创建 {@link ChatPane}，装进新的聊天窗口</li>
      *   <li>隐藏登录窗口，显示聊天窗口</li>
      * </ol>
      *
@@ -167,8 +168,10 @@ public class Kelly extends Application {
             session = state.client();
         }
 
-        // 聊天页场景：独立根容器 + 圆角裁剪
-        chatPane = new ChatPane(state);
+        chatStage = new Stage();
+        WindowFrame.apply(chatStage);
+        boolean customFrame = chatStage.getStyle() == StageStyle.TRANSPARENT;
+        chatPane = new ChatPane(state, customFrame);
         StackPane chatRoot = new StackPane();
         chatRoot.getStyleClass().add("app-bg");
         ThemeService.apply(chatRoot, new ThemeService().load());
@@ -177,21 +180,19 @@ public class Kelly extends Application {
 
         var normalBounds = loginBounds.get();
         Scene chatScene = new Scene(chatRoot, normalBounds.width(), normalBounds.height());
-        // 透明填充：让根节点的圆角裁剪透出桌面
-        chatScene.setFill(Color.TRANSPARENT);
         chatScene.getStylesheets().add(
                 Kelly.class.getResource("app.css").toExternalForm());
-        WindowFrame.applyRoundedClip(chatRoot);
 
-        // 无边框圆角窗口
-        chatStage = new Stage();
-        WindowFrame.apply(chatStage);
+        if (customFrame) {
+            chatScene.setFill(Color.TRANSPARENT);
+            WindowFrame.applyRoundedClip(chatRoot);
+            WindowFrame.makeResizable(chatStage, chatScene);
+        }
         chatStage.setScene(chatScene);
         chatStage.setTitle(state.username());
         AppIcons.applyStage(chatStage, "/icons/kelly.png");
         chatStage.setMinWidth(560);
         chatStage.setMinHeight(360);
-        WindowFrame.makeResizable(chatStage, chatScene);
         chatStage.setOnCloseRequest(e -> {
             e.consume();
             FxStageSupport.hide(chatStage);
