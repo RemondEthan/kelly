@@ -200,6 +200,10 @@
                     <compilerArgs>
                         <arg>--add-exports</arg>
                         <arg>javafx.graphics/com.sun.glass.ui=com.mordor.kelly</arg>
+                        <arg>--add-exports</arg>
+                        <arg>javafx.graphics/com.sun.javafx.stage=com.mordor.kelly</arg>
+                        <arg>--add-exports</arg>
+                        <arg>javafx.graphics/com.sun.javafx.tk=com.mordor.kelly</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>
@@ -288,6 +292,10 @@
                             <options>
                                 <option>--add-exports</option>
                                 <option>javafx.graphics/com.sun.glass.ui=com.mordor.kelly</option>
+                                <option>--add-exports</option>
+                                <option>javafx.graphics/com.sun.javafx.stage=com.mordor.kelly</option>
+                                <option>--add-exports</option>
+                                <option>javafx.graphics/com.sun.javafx.tk=com.mordor.kelly</option>
                                 <option>--add-opens</option>
                                 <option>javafx.graphics/com.sun.glass.ui.mac=com.mordor.kelly</option>
                             </options>
@@ -463,6 +471,8 @@
                                         <argument>--java-options</argument><argument>-Xmx512m</argument>
                                         <argument>--java-options</argument><argument>--add-modules=javafx.controls,javafx.fxml,javafx.web,javafx.swing,javafx.media,javafx.graphics,javafx.base</argument>
                                         <argument>--java-options</argument><argument>--add-exports=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED</argument>
+                                        <argument>--java-options</argument><argument>--add-exports=javafx.graphics/com.sun.javafx.stage=ALL-UNNAMED</argument>
+                                        <argument>--java-options</argument><argument>--add-exports=javafx.graphics/com.sun.javafx.tk=ALL-UNNAMED</argument>
                                         <argument>--linux-shortcut</argument>
                                         <argument>--linux-menu-group</argument><argument>Utility</argument>
                                         <argument>--linux-deb-maintainer</argument><argument>member86071@gmail.com</argument>
