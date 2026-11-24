@@ -49,6 +49,7 @@ import org.kordamp.ikonli.materialdesign2.MaterialDesignF;
  * 派生字符串绑定，当 peerDisplay 属性变化时自动重新计算显示文本。</p>
  */
 public class ChatHeader extends HBox {
+    private final HBox windowButtons = WindowFrame.windowButtons(this);
 
     /**
      * 构造聊天顶部标题栏。
@@ -59,7 +60,7 @@ public class ChatHeader extends HBox {
      * @param fontService 字体设置持久化服务
      */
     public ChatHeader(AppState state, ChatController controller, Node chatRoot,
-                      ChatFontSettingsService fontService, boolean customFrame) {
+                      ChatFontSettingsService fontService) {
         super();
         getStyleClass().add("header");
         setAlignment(Pos.CENTER_LEFT);
@@ -133,9 +134,13 @@ public class ChatHeader extends HBox {
         // 主题切换按钮：亮色 / 深色
         getChildren().add(new ThemeToggleButton());
 
-        if (customFrame) {
-            getChildren().add(WindowFrame.windowButtons(this));
-            WindowFrame.makeDraggable(this);
-        }
+        getChildren().add(windowButtons);
+        windowButtons.managedProperty().bind(windowButtons.visibleProperty());
+        setCustomFrame(false);
+        WindowFrame.makeDraggable(this, windowButtons::isVisible);
+    }
+
+    void setCustomFrame(boolean customFrame) {
+        windowButtons.setVisible(customFrame);
     }
 }

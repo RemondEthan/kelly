@@ -54,10 +54,15 @@ public class ChatPane extends StackPane {
     private final ChatFontSettingsService fontService;
     /** 顶层 UI 容器（BorderPane 布局） */
     private final BorderPane ui;
+    private final ChatHeader header;
     /** 聊天区域容器（消息列表 + 可选知识库） */
     private final BorderPane chat;
     /** 知识库面板实例（Kelsy 启用时创建） */
     private KnowledgePane knowledge;
+
+    public void setCustomFrame(boolean customFrame) {
+        header.setCustomFrame(customFrame);
+    }
 
     /**
      * 构造聊天主面板。
@@ -71,7 +76,7 @@ public class ChatPane extends StackPane {
      *
      * @param state 应用状态
      */
-    public ChatPane(AppState state, boolean customFrame) {
+    public ChatPane(AppState state) {
         long t0 = System.nanoTime();
         // 加载聊天专用 CSS 样式表
         getStylesheets().add(
@@ -103,7 +108,8 @@ public class ChatPane extends StackPane {
         chat.setCenter(new MessageListView(controller));
 
         // 组装 BorderPane 的各个区域
-        ui.setTop(new ChatHeader(state, controller, this, fontService, customFrame));
+        header = new ChatHeader(state, controller, this, fontService);
+        ui.setTop(header);
         ui.setLeft(new RoomMemberList(controller, input::insertMention));
         ui.setBottom(input);
         applyCenter();

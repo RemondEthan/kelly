@@ -1,5 +1,6 @@
 package com.mordor.kelly.ui.login;
 
+import com.mordor.kelly.app.WindowFrame;
 import com.mordor.kelly.common.Diagnostics;
 import com.mordor.kelly.kelsy.config.KelsyConfig;
 import com.mordor.kelly.model.AppState;
@@ -94,6 +95,7 @@ public class LoginPane extends StackPane {
     private final Button modelConfig = new Button("⚙ 接入大模型");
     /** 连接/进入按钮 */
     private final Button connect = new Button("连 接");
+    private final HBox windowButtons = WindowFrame.windowButtons(this);
     /** 头像文件路径 */
     private String avatarPath = "";
     /** 头像预览容器 */
@@ -108,6 +110,8 @@ public class LoginPane extends StackPane {
         getStylesheets().add(
                 LoginPane.class.getResource("login.css").toExternalForm());
 
+        // 表单的最小尺寸不能把整个面板撑出场景，否则顶栏会被裁掉。
+        setMinSize(0, 0);
         setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
         // 卡片用 margin 留边距，主题按钮才能贴到窗口右上角
         setPadding(new Insets(0));
@@ -180,12 +184,17 @@ public class LoginPane extends StackPane {
         card.setMaxWidth(Double.MAX_VALUE);
         card.setMaxHeight(Double.MAX_VALUE);
 
-        // 主题切换按钮：贴在窗口右上角
-        ThemeToggleButton themeToggle = new ThemeToggleButton();
-        getChildren().addAll(card, themeToggle);
-        StackPane.setAlignment(themeToggle, Pos.TOP_RIGHT);
+        HBox header = new HBox(8, new ThemeToggleButton(), windowButtons);
+        header.setAlignment(Pos.CENTER_RIGHT);
+        header.setMaxHeight(Region.USE_PREF_SIZE);
+        windowButtons.managedProperty().bind(windowButtons.visibleProperty());
+        header.pickOnBoundsProperty().bind(windowButtons.visibleProperty());
+        setCustomFrame(false);
+        WindowFrame.makeDraggable(header, windowButtons::isVisible);
+        getChildren().addAll(card, header);
+        StackPane.setAlignment(header, Pos.TOP_CENTER);
         StackPane.setMargin(card, new Insets(38, 66, 38, 66));
-        StackPane.setMargin(themeToggle, new Insets(12, 14, 0, 0));
+        StackPane.setMargin(header, new Insets(12, 14, 0, 14));
 
         LoginController.Prefilled p = controller.prefill();
         serverIp.setText(p.ip());
@@ -196,6 +205,10 @@ public class LoginPane extends StackPane {
         workspace.setText(controller.workspaceDir());
         refreshAvatarPreview();
         applyOffline(false);
+    }
+
+    public void setCustomFrame(boolean customFrame) {
+        windowButtons.setVisible(customFrame);
     }
 
     /** 浏览已有目录；当前文本展开后若是目录则作为初始位置。 */

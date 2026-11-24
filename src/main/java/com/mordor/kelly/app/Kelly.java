@@ -24,8 +24,7 @@ import javafx.stage.StageStyle;
  *
  * <p>核心架构：
  * <ul>
- *   <li>根容器使用 {@link StackPane}，通过 {@code getChildren().setAll()} 切换
- *       {@link LoginPane}（登录页）和 {@link ChatPane}（聊天页），实现页面跳转</li>
+ *   <li>{@link LoginPane}（登录页）和 {@link ChatPane}（聊天页）分别使用独立窗口</li>
  *   <li>{@link SingleInstance} 保证同一时间只有一个实例运行，第二个启动的进程会唤醒已有窗口</li>
  *   <li>{@link TrayManager} 将应用最小化到系统托盘，支持 macOS / Windows / Linux</li>
  *   <li>{@link UnreadAlert} 监听未读消息，在托盘图标、窗口图标、任务栏图标上闪烁提醒</li>
@@ -51,7 +50,6 @@ public class Kelly extends Application {
     /** 聊天页窗口：无边框 + 圆角，标题栏由应用自绘 */
     private Stage chatStage;
     /** 登录页的场景根容器 */
-    private StackPane root;
     /** 当前的即时通讯客户端连接，登录成功后创建，退出时关闭 */
     private ImClient session;
     /** 未读消息提醒管理器，监听消息并触发图标闪烁 */
@@ -73,9 +71,8 @@ public class Kelly extends Application {
      */
     @Override
     public void start(Stage stage) {
-        // 登录页保持系统原生装饰：标题栏、关闭按钮都由桌面环境绘制
         this.loginStage = stage;
-        this.root = new StackPane();
+        StackPane root = new StackPane();
         root.getStyleClass().add("app-bg");
         // 主题：装载色板样式表，并应用上次选择的主题（亮色 / 深色）
         ThemeService.apply(root, new ThemeService().load());
@@ -85,7 +82,11 @@ public class Kelly extends Application {
         Font.loadFont(getClass().getResourceAsStream(
                 "/META-INF/resources/materialdesignicons2/5.8.55/fonts/materialdesignicons-webfont.ttf"), 0);
 
-        showLogin();
+        LoginPane loginPane = new LoginPane(this::enterChat);
+        root.getChildren().setAll(loginPane);
+        if (X11WindowFrame.isDeepinSession()) {
+            X11WindowFrame.install(loginStage, loginPane::setCustomFrame);
+        }
 
         // 创建场景，设置固定尺寸，加载全局样式表
         Scene scene = new Scene(root, WIDTH, HEIGHT);
@@ -136,20 +137,9 @@ public class Kelly extends Application {
     }
 
     /**
-     * 显示登录页面。
-     * 重置窗口标题，将根容器内容替换为 {@link LoginPane}。
-     * LoginPane 的回调 {@code enterChat} 在登录成功后被调用。
-     */
-    private void showLogin() {
-        loginStage.setTitle("kelly");
-        root.getChildren().setAll(new LoginPane(this::enterChat));
-    }
-
-    /**
      * 登录成功后切换到聊天页面。
      *
-     * <p>登录页和聊天页是两个窗口：登录页保留系统原生标题栏，
-     * 聊天页根据桌面环境使用原生边框或由 {@link ChatHeader} 自绘标题栏。
+     * <p>登录页和聊天页是两个窗口，聊天页顶栏由应用绘制。
      * 切换时新窗口沿用登录窗口的位置，看起来像同一个窗口换了副标题栏。</p>
      *
      * <p>流程：
@@ -170,8 +160,9 @@ public class Kelly extends Application {
 
         chatStage = new Stage();
         WindowFrame.apply(chatStage);
-        boolean customFrame = chatStage.getStyle() == StageStyle.TRANSPARENT;
-        chatPane = new ChatPane(state, customFrame);
+        boolean transparentFrame = chatStage.getStyle() == StageStyle.TRANSPARENT;
+        ChatPane pane = new ChatPane(state);
+        chatPane = pane;
         StackPane chatRoot = new StackPane();
         chatRoot.getStyleClass().add("app-bg");
         ThemeService.apply(chatRoot, new ThemeService().load());
@@ -183,10 +174,13 @@ public class Kelly extends Application {
         chatScene.getStylesheets().add(
                 Kelly.class.getResource("app.css").toExternalForm());
 
-        if (customFrame) {
+        if (transparentFrame) {
             chatScene.setFill(Color.TRANSPARENT);
             WindowFrame.applyRoundedClip(chatRoot);
             WindowFrame.makeResizable(chatStage, chatScene);
+            pane.setCustomFrame(true);
+        } else {
+            X11WindowFrame.install(chatStage, pane::setCustomFrame);
         }
         chatStage.setScene(chatScene);
         chatStage.setTitle(state.username());

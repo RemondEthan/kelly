@@ -16,7 +16,7 @@ import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
-import java.util.Arrays;
+import java.util.function.BooleanSupplier;
 
 /**
  * 自绘窗口框架：去掉系统装饰，改由应用自己画标题栏。
@@ -56,7 +56,7 @@ public final class WindowFrame {
 
     /**
      * 配置舞台样式。DDE/X11 上 JavaFX 无边框窗口缺少原生最小化权限，
-     * 因此使用系统边框，让任务栏可以收起窗口。
+     * 因此先用原生边框创建窗口，显示后再隐藏系统边框。
      *
      * <p>必须在 {@code stage.show()} 之前调用。
      * {@link StageStyle#TRANSPARENT} 同时意味着「无装饰」和「透明」，
@@ -66,11 +66,7 @@ public final class WindowFrame {
      * @param stage 主窗口
      */
     public static void apply(Stage stage) {
-        String desktop = System.getenv("XDG_CURRENT_DESKTOP");
-        boolean dde = desktop != null && Arrays.stream(desktop.split(":"))
-                .anyMatch(name -> name.equalsIgnoreCase("DDE") || name.equalsIgnoreCase("Deepin"));
-        boolean x11 = "x11".equalsIgnoreCase(System.getenv("XDG_SESSION_TYPE"));
-        stage.initStyle(dde && x11 ? StageStyle.DECORATED : StageStyle.TRANSPARENT);
+        stage.initStyle(X11WindowFrame.isDeepinSession() ? StageStyle.DECORATED : StageStyle.TRANSPARENT);
     }
 
     /**
@@ -97,8 +93,16 @@ public final class WindowFrame {
      * @param region 拖动区域（通常是标题栏）
      */
     public static void makeDraggable(Node region) {
+        makeDraggable(region, () -> true);
+    }
+
+    public static void makeDraggable(Node region, BooleanSupplier enabled) {
         DragHandler handler = new DragHandler(region);
-        region.addEventHandler(MouseEvent.MOUSE_PRESSED, handler);
+        region.addEventHandler(MouseEvent.MOUSE_PRESSED, event -> {
+            if (enabled.getAsBoolean()) {
+                handler.handle(event);
+            }
+        });
         region.addEventHandler(MouseEvent.MOUSE_DRAGGED, handler);
         region.addEventHandler(MouseEvent.MOUSE_RELEASED, handler);
     }
